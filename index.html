@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRDMS - Card & Reload System</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <!-- Offline-First Libraries -->
+    <script src="lib/dexie.js"></script>
+    <script src="lib/tailwind.js"></script>
+    <script src="lib/sweetalert2.js"></script>
+    <script src="lib/chart.js"></script>
+    <script src="lib/supabase.js"></script>
+    
+    <!-- Icons (Requires internet for first load, then cached by SW) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4f46e5',    /* Indigo 600 */
+                        secondary: '#ec4899',  /* Pink 500 */
+                        dark: '#0f172a',       /* Slate 900 */
+                        card: '#1e293b'        /* Slate 800 */
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000000;
+            color: #f8fafc;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background */
+        .bg-gradient-radial {
+            background-color: #000000;
+            background-image: radial-gradient(circle at top right, rgba(79, 70, 229, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.15) 0%, transparent 40%);
+        }
+
+        /* Glassmorphism Panels */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(15, 23, 42, 0.5);
+            /* Changed from white to dark to avoid white rim */
+            border-radius: 1rem;
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Navigation Styles */
+        .nav-active {
+            color: #818cf8;
+            border-bottom: 2px solid #818cf8;
+            font-weight: 600;
+        }
+
+        .nav-item {
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .nav-item:hover:not(.nav-active) {
+            color: #a5b4fc;
+        }
+
+        /* Form Controls */
+        .input-field {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid #334155;
+            color: #f8fafc;
+            border-radius: 0.5rem;
+            padding: 0.65rem 1rem;
+            width: 100%;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .input-field:disabled {
+            background: rgba(15, 23, 42, 0.4);
+            color: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        /* Buttons */
+        .btn-primary {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 0.65rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 15px -3px rgba(79, 70, 229, 0.4);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 10px 20px -3px rgba(79, 70, 229, 0.6);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #334155;
+            color: white;
+            padding: 0.65rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border: 1px solid #475569;
+        }
+
+        .btn-secondary:hover {
+            background: #475569;
+            border-color: #64748b;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.4rem;
+            transition: 0.2s;
+        }
+
+        .btn-danger:hover {
+            background: #f87171;
+        }
+
+        /* Animations */
+        .fade-in {
+            animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Loader */
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="min-h-screen relative bg-gradient-radial">
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-container" class="min-h-screen flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md p-8 text-center space-y-6">
+            <div
+                class="bg-indigo-600/20 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto border border-indigo-500/30">
+                <i class="fas fa-boxes text-4xl text-indigo-400"></i>
+            </div>
+            <div>
+                <h1 class="text-3xl font-bold text-white mb-1 tracking-tight">CRDMS</h1>
+                <p class="text-gray-400 text-sm">Distributor Management System</p>
+                <div class="mt-4 pt-4 border-t border-slate-700/50 flex flex-col items-center">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-black">Digital Infrastructure By
+                    </p>
+                    <p class="text-xs font-bold text-indigo-400">JudeCSilva</p>
+                </div>
+            </div>
+
+            <form id="login-form" class="space-y-4 text-left">
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-gray-400">Phone Number (Username)</label>
+                    <input type="text" id="login-username" class="input-field" placeholder="e.g. 0771234567" required>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-gray-400">Password</label>
+                    <input type="password" id="login-password" class="input-field" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn-primary w-full py-3 text-lg mt-2">Login</button>
+            </form>
+            <p class="text-xs text-gray-600">Secure Professional Portal</p>
+        </div>
+    </div>
+
+    <!-- MAIN SYSTEM CONTENT (Hidden by default) -->
+    <div id="app-content" class="hidden min-h-screen">
+        <!-- Top Bar -->
+        <header
+            class="glass-panel mx-4 mt-4 md:mx-auto md:max-w-5xl rounded-t-2xl border-b-0 py-4 px-6 flex justify-between items-center z-20 relative no-print">
+            <div class="flex items-center space-x-3">
+                <div
+                    class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                    <i class="fas fa-user-check text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold leading-tight text-white" id="display-user-name">CRDMS</h1>
+                    <p class="text-xs text-indigo-400 tracking-wider font-bold" id="display-user-role">ADMIN MODE</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div id="sync-status" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/50">
+                    <div class="sync-dot w-2 h-2 rounded-full bg-slate-500 animate-pulse"></div>
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-tighter" id="sync-text">Cloud Sync</span>
+                </div>
+                <button onclick="logout()"
+                    class="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg border border-red-500/30 transition-all">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                </button>
+            </div>
+        </header>
+
+        <!-- App Container -->
+        <div id="app-container"
+            class="max-w-5xl mx-4 md:mx-auto mb-10 relative z-10 glass-panel rounded-b-2xl overflow-hidden min-h-[80vh] flex flex-col shadow-2xl">
+
+            <!-- Navigation -->
+            <nav
+                class="flex overflow-x-auto space-x-2 md:space-x-8 px-6 pt-5 border-b border-gray-700/50 bg-[#1e293b]/30 no-print">
+                <button onclick="switchTab('overview')" id="tab-overview"
+                    class="nav-item nav-active pb-4 px-2 font-medium whitespace-nowrap text-sm md:text-base">
+                    <i class="fas fa-chart-pie mr-2"></i> Overview
+                </button>
+                <button onclick="switchTab('issue')" id="tab-issue"
+                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
+                    <i class="fas fa-box-open mr-2"></i> Issue Stock
+                </button>
+                <button onclick="switchTab('collection')" id="tab-collection"
+                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
+                    <i class="fas fa-hand-holding-dollar mr-2"></i> Collection
+                </button>
+                <button onclick="switchTab('settings')" id="tab-settings"
+                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
+                    <i class="fas fa-cog mr-2"></i> Settings
+                </button>
+                <button onclick="switchTab('reports')" id="tab-reports"
+                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
+                    <i class="fas fa-file-invoice-dollar mr-2"></i> Reports
+                </button>
+            </nav>
+
+            <div class="flex-1 relative bg-slate-900/40">
+
+                <!-- OVERVIEW TAB -->
+                <div id="overview" class="tab-content fade-in p-6">
+                    <div class="flex justify-between items-end mb-8">
+                        <div>
+                            <h2 class="text-2xl font-bold text-white">Dashboard Overview</h2>
+                            <p class="text-sm text-gray-400 mt-1">Real-time distribution metrics</p>
+                        </div>
+                        <div class="flex items-center space-x-3 no-print">
+                            <button onclick="window.print()"
+                                class="bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 px-4 py-2 rounded-lg text-xs font-bold border border-indigo-500/30 transition-all">
+                                <i class="fas fa-print mr-2"></i> Print Analytics
+                            </button>
+                            <div class="bg-slate-800 px-4 py-2 rounded-lg border border-slate-700 text-sm font-medium">
+                                <i class="far fa-calendar-alt mr-2 text-indigo-400"></i><span
+                                    id="overview-month">...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <!-- Metric Cards -->
+                        <div
+                            class="glass-panel p-6 border-l-4 border-l-purple-500 hover:bg-slate-800/80 transition-colors">
+                            <h3 class="text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Monthly Target
+                            </h3>
+                            <p class="text-3xl font-bold mt-2" id="metric-monthly-target">Rs. 0</p>
+                        </div>
+                        <div
+                            class="glass-panel p-6 border-l-4 border-l-green-400 hover:bg-slate-800/80 transition-colors">
+                            <h3 class="text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Sales To Date
+                            </h3>
+                            <p class="text-3xl font-bold mt-2 text-green-400" id="metric-monthly-sales">Rs. 0</p>
+                        </div>
+                        <div
+                            class="glass-panel p-6 border-l-4 border-l-blue-400 hover:bg-slate-800/80 transition-colors">
+                            <h3 class="text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Today's Target
+                            </h3>
+                            <p class="text-3xl font-bold mt-2 text-blue-400" id="metric-today-target">Rs. 0</p>
+                        </div>
+                        <div
+                            class="glass-panel p-6 border-l-4 border-l-pink-500 hover:bg-slate-800/80 transition-colors">
+                            <h3 class="text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Month Face Value
+                            </h3>
+                            <p class="text-3xl font-bold mt-2 text-pink-500" id="metric-monthly-face">Rs. 0</p>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="glass-panel p-6 mb-8">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-medium">Target Progress</h3>
+                            <span class="text-xs px-2 py-1 bg-slate-800 rounded text-gray-300 border border-slate-700"
+                                id="days-remaining">...</span>
+                        </div>
+                        <div
+                            class="w-full bg-slate-800 rounded-full h-5 relative overflow-hidden shadow-inner border border-slate-700/50">
+                            <div id="progress-bar"
+                                class="absolute top-0 left-0 bg-gradient-to-r from-primary to-secondary h-5 rounded-full transition-all duration-1000 ease-out w-0 shadow-[0_0_15px_rgba(79,70,229,0.5)]">
+                            </div>
+                        </div>
+                        <div class="flex justify-between text-sm mt-3 font-medium text-gray-400">
+                            <span id="progress-text" class="text-white font-bold">0% Completed</span>
+                            <span>Target: <span id="progress-target" class="text-white">Rs. 0</span></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                        <!-- Linear Performance Chart -->
+                        <div class="lg:col-span-2 glass-panel p-6 shadow-xl border-indigo-500/10 h-[400px]">
+                            <h4
+                                class="text-xs font-black uppercase text-indigo-400 mb-6 tracking-widest border-b border-indigo-500/10 pb-2 flex items-center justify-between">
+                                Monthly Sales Growth <i class="fas fa-chart-line text-lg"></i>
+                            </h4>
+                            <div class="h-[280px]">
+                                <canvas id="performanceChart"></canvas>
+                            </div>
+                        </div>
+                        <!-- Product Mix Chart -->
+                        <div class="glass-panel p-6 shadow-xl border-indigo-500/10 h-[400px]">
+                            <h4
+                                class="text-xs font-black uppercase text-rose-400 mb-6 tracking-widest border-b border-rose-500/10 pb-2 flex items-center justify-between">
+                                Product Contribution <i class="fas fa-chart-pie text-lg"></i>
+                            </h4>
+                            <div class="h-[280px] flex items-center justify-center">
+                                <canvas id="productChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Today's Quick Stats -->
+                    <div class="flex flex-col md:flex-row justify-between items-center mb-6 mt-8">
+                        <h3 class="text-lg font-bold text-white mb-4 md:mb-0">Distributor Performance</h3>
+                        <div class="relative w-full md:w-72">
+                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
+                            <input type="text" id="distributor-search" oninput="renderDistributorStats()"
+                                placeholder="Search distributor name..."
+                                class="w-full bg-slate-800/80 border border-slate-700/50 rounded-full py-2 pl-10 pr-4 text-xs focus:ring-2 focus:ring-indigo-500 transition-all outline-none">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <div class="glass-panel p-5 flex items-center shadow-lg shadow-orange-500/5">
+                            <div class="p-3 bg-orange-500/20 text-orange-400 rounded-lg mr-4">
+                                <i class="fas fa-boxes-packing text-xl"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-400 font-medium">Total Issued Value</p>
+                                <p class="text-xl font-bold" id="metric-today-issued">Rs. 0</p>
+                            </div>
+                        </div>
+                        <div class="glass-panel p-5 flex items-center shadow-lg shadow-teal-500/5">
+                            <div class="p-3 bg-teal-500/20 text-teal-400 rounded-lg mr-4">
+                                <i class="fas fa-sack-dollar text-xl"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-400 font-medium">Total Collected Cash</p>
+                                <p class="text-xl font-bold" id="metric-today-collected">Rs. 0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Admin Section: Distributor Wise Performance -->
+                    <div id="admin-distributor-stats" class="hidden">
+                        <h3 class="text-lg font-medium mb-4">Distributor Wise Monthly Performance</h3>
+                        <div class="glass-panel overflow-hidden border-indigo-500/10 shadow-xl">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead
+                                        class="bg-indigo-600/10 text-[10px] font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20">
+                                        <tr>
+                                            <th class="py-4 px-6">Distributor Info</th>
+                                            <th class="py-4 px-4 text-center">Monthly Target</th>
+                                            <th class="py-4 px-4 text-center">Dynamic Day Target</th>
+                                            <th class="py-4 px-4 text-center">Achieved (MTD)</th>
+                                            <th class="py-4 px-4 text-center">Current Balance</th>
+                                            <th class="py-4 px-4 text-center">Face Value</th>
+                                            <th class="py-4 px-4 text-center">MTD Progress</th>
+                                            <th class="py-4 px-6 text-right">Commission</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="distributor-performance-list" class="divide-y divide-slate-700/30">
+                                        <!-- Rendered dynamically -->
+                                        <tr>
+                                            <td colspan="5" class="py-12 text-center text-gray-500 italic">Calculating
+                                                performance data...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ISSUE TAB -->
+                <div id="issue" class="tab-content hidden fade-in p-6">
+                    <div class="mb-6">
+                        <h2 class="text-2xl font-bold text-white mb-1">Morning Setup - Issue Stock</h2>
+                        <p class="text-sm text-gray-400">Manage daily stock assignment and in-hand balances.</p>
+                    </div>
+
+                    <!-- Distributor Personal Info Card -->
+                    <div id="dist-info-card-issue" class="hidden mb-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
+                            <div class="glass-panel p-5 bg-indigo-500/5 border-indigo-500/20">
+                                <p class="text-xs text-indigo-400 font-black mb-1 uppercase tracking-widest">My Monthly
+                                    Target</p>
+                                <h4 class="text-2xl font-black text-white personal-target">Rs. 0.00</h4>
+                            </div>
+                            <div class="glass-panel p-5 bg-emerald-500/5 border-emerald-500/20">
+                                <p class="text-xs text-emerald-400 font-black mb-1 uppercase tracking-widest">My Sales
+                                    To Date</p>
+                                <h4 class="text-2xl font-black text-white personal-sales">Rs. 0.00</h4>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- NEW: Distributor Personal Performance Table -->
+                    <div id="dist-perf-issue-wrap" class="hidden mb-8">
+                        <div class="glass-panel overflow-hidden border-indigo-500/10 shadow-xl bg-slate-800/20">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead
+                                        class="bg-indigo-600/10 text-[10px] font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20">
+                                        <tr>
+                                            <th class="py-4 px-6">Distributor Status</th>
+                                            <th class="py-4 px-4 text-center">Monthly Target</th>
+                                            <th class="py-4 px-4 text-center">Dynamic Day Target</th>
+                                            <th class="py-4 px-4 text-center">Achieved (MTD)</th>
+                                            <th class="py-4 px-4 text-center">Face Value</th>
+                                            <th class="py-4 px-4 text-center">MTD Progress</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dist-perf-issue-list">
+                                        <!-- Dynamic content -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form id="issue-form" class="space-y-6">
+                        <div class="glass-panel p-6 mb-6">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2 text-gray-300">Issue Date</label>
+                                    <input type="date" id="issue-date" class="input-field" required>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2 text-gray-300">Select Staff
+                                        Member</label>
+                                    <select id="issue-staff" class="input-field bg-slate-800"
+                                        onchange="updateStaffPerformanceDisplay(this.value); loadPreviousBalances();"
+                                        required>
+                                        <option value="" disabled selected>Select Staff...</option>
+                                    </select>
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button type="button" onclick="loadIssueForEdit()"
+                                        class="btn-secondary flex-1 py-[0.65rem] text-xs">
+                                        <i class="fas fa-edit mr-1"></i> Load Edit
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Performance Stats Card (New) -->
+                        <div id="staff-perf-card"
+                            class="hidden glass-panel p-5 mb-6 border-indigo-500/30 bg-gradient-to-r from-indigo-900/40 to-slate-900/60 shadow-xl overflow-hidden relative">
+                            <div class="absolute -right-10 -top-10 opacity-10 rotate-12">
+                                <i class="fas fa-chart-line text-9xl"></i>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
+                                <div class="border-r border-slate-700/50 pr-4">
+                                    <p class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">
+                                        Monthly Target</p>
+                                    <p class="text-lg font-black text-white" id="perf-monthly-target">Rs. 0</p>
+                                </div>
+                                <div class="border-r border-slate-700/50 px-4">
+                                    <p class="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">
+                                        Expected Day Target</p>
+                                    <p class="text-lg font-black text-white" id="perf-day-target">Rs. 0</p>
+                                </div>
+                                <div class="border-r border-slate-700/50 px-4">
+                                    <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">
+                                        Achieved (MTD)</p>
+                                    <p class="text-lg font-black text-white" id="perf-achieved">Rs. 0</p>
+                                </div>
+                                <div class="pl-4">
+                                    <p class="text-[9px] font-black text-orange-400 uppercase tracking-widest mb-1">
+                                        Month Progress</p>
+                                    <div class="flex items-center space-x-2">
+                                        <p class="text-lg font-black text-white" id="perf-percent">0%</p>
+                                        <div class="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden min-w-[60px]">
+                                            <div id="perf-bar"
+                                                class="h-full bg-gradient-to-r from-orange-500 to-indigo-500 transition-all duration-500"
+                                                style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- Physical Cards -->
+                            <div class="glass-panel p-6 shadow-lg shadow-blue-500/5">
+                                <h3
+                                    class="text-lg font-semibold mb-5 flex items-center text-blue-400 border-b border-slate-700/50 pb-3">
+                                    <i class="fas fa-sd-card mr-2 text-xl"></i> Cards: Opening & New
+                                </h3>
+                                <div class="space-y-4">
+                                    <!-- Headers -->
+                                    <div
+                                        class="grid grid-cols-4 gap-2 mb-2 text-[10px] font-black text-gray-500 uppercase tracking-tighter">
+                                        <div class="col-span-1">Item (Face)</div>
+                                        <div class="text-center">Yesterday</div>
+                                        <div class="text-center">New</div>
+                                        <div class="text-center">Total</div>
+                                    </div>
+                                    <!-- Cards 48/50 -->
+                                    <div class="grid grid-cols-4 gap-2 items-center">
+                                        <div class="text-sm font-bold">Rs 48 <span
+                                                class="text-[10px] text-indigo-400">(50)</span></div>
+                                        <input type="number" id="issue-prev-c48"
+                                            class="input-field py-2 px-1 text-center bg-slate-800/40 text-gray-400"
+                                            readonly value="0">
+                                        <input type="number" id="issue-new-c48"
+                                            class="input-field py-2 px-1 text-center border-indigo-500/30 issue-calc highlight-input"
+                                            min="0" value="0">
+                                        <input type="number" id="issue-total-c48"
+                                            class="input-field py-2 px-1 text-center font-black bg-slate-900 border-indigo-500/20 text-white"
+                                            readonly value="0">
+                                    </div>
+                                    <!-- Cards 95/99 -->
+                                    <div class="grid grid-cols-4 gap-2 items-center">
+                                        <div class="text-sm font-bold">Rs 95 <span
+                                                class="text-[10px] text-indigo-400">(99)</span></div>
+                                        <input type="number" id="issue-prev-c95"
+                                            class="input-field py-2 px-1 text-center bg-slate-800/40 text-gray-400"
+                                            readonly value="0">
+                                        <input type="number" id="issue-new-c95"
+                                            class="input-field py-2 px-1 text-center border-indigo-500/30 issue-calc highlight-input"
+                                            min="0" value="0">
+                                        <input type="number" id="issue-total-c95"
+                                            class="input-field py-2 px-1 text-center font-black bg-slate-900 border-indigo-500/20 text-white"
+                                            readonly value="0">
+                                    </div>
+                                    <!-- Cards 96/100 -->
+                                    <div class="grid grid-cols-4 gap-2 items-center">
+                                        <div class="text-sm font-bold">Rs 96 <span
+                                                class="text-[10px] text-indigo-400">(100)</span></div>
+                                        <input type="number" id="issue-prev-c96"
+                                            class="input-field py-2 px-1 text-center bg-slate-800/40 text-gray-400"
+                                            readonly value="0">
+                                        <input type="number" id="issue-new-c96"
+                                            class="input-field py-2 px-1 text-center border-indigo-500/30 issue-calc highlight-input"
+                                            min="0" value="0">
+                                        <input type="number" id="issue-total-c96"
+                                            class="input-field py-2 px-1 text-center font-black bg-slate-900 border-indigo-500/20 text-white"
+                                            readonly value="0">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Digital Value -->
+                            <div class="space-y-6">
+                                <div class="glass-panel p-6 shadow-lg shadow-green-500/5">
+                                    <h3
+                                        class="text-lg font-semibold mb-5 flex items-center text-green-400 border-b border-slate-700/50 pb-3">
+                                        <i class="fas fa-mobile-alt mr-2"></i> Reload Balance Rollover
+                                    </h3>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label
+                                                class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Yesterday
+                                                (Rs.)</label>
+                                            <input type="number" id="issue-prev-reload"
+                                                class="input-field py-2 text-center bg-slate-800/40 text-gray-400"
+                                                readonly value="0">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">New
+                                                Reload (Rs.)</label>
+                                            <input type="number" id="issue-new-reload"
+                                                class="input-field py-2 text-center border-emerald-500/30 issue-calc highlight-input"
+                                                min="0" value="0">
+                                        </div>
+                                    </div>
+                                    <div
+                                        class="mt-4 p-4 bg-emerald-900/10 rounded-xl border border-emerald-500/20 flex justify-between items-center">
+                                        <div>
+                                            <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                                                Total Avail. Reload</p>
+                                            <p class="text-2xl font-black text-white" id="issue-total-reload-disp">Rs.
+                                                0.00</p>
+                                            <input type="hidden" id="issue-total-reload-val" value="0">
+                                        </div>
+                                        <div class="text-right">
+                                            <i class="fas fa-wallet text-3xl text-emerald-500/20"></i>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Summary Card -->
+                                <div
+                                    class="glass-panel p-6 bg-gradient-to-br from-indigo-600/20 to-slate-900/80 border-indigo-500/30 shadow-xl">
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                        <div>
+                                            <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                                                Yesterday Value</p>
+                                            <p class="text-base font-bold text-gray-300" id="issue-prev-total-val">Rs.
+                                                0.00</p>
+                                        </div>
+                                        <div>
+                                            <p class="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
+                                                Today New Issue Value</p>
+                                            <p class="text-base font-bold text-indigo-400" id="issue-new-total-val">Rs.
+                                                0.00</p>
+                                        </div>
+                                        <div id="issue-prev-cash-wrap" class="hidden">
+                                            <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest"
+                                                id="issue-prev-cash-label">Prev Balance</p>
+                                            <p class="text-base font-black" id="issue-prev-cash-val">Rs. 0.00</p>
+                                        </div>
+                                        <div class="md:text-right">
+                                            <p class="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">
+                                                Grand Total Value</p>
+                                            <p class="text-xl font-black text-white" id="issue-grand-total-val">Rs. 0.00
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-center border-t border-slate-700/50 pt-4">
+                                        <button type="submit"
+                                            class="btn-primary py-3 px-12 text-lg font-bold shadow-lg shadow-indigo-500/30 w-full md:w-auto">
+                                            <i class="fas fa-save mr-2"></i> Save Morning Session
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- COLLECTION TAB -->
+                <div id="collection" class="tab-content hidden fade-in p-6">
+                    <div class="mb-6">
+                        <h2 class="text-2xl font-bold text-white mb-1">Evening Entry - Collection</h2>
+                        <p class="text-sm text-gray-400">Reconcile sales, commissions, and rollover stock.</p>
+                    </div>
+
+                    <!-- Distributor Personal Info Card -->
+                    <div id="dist-info-card-collect" class="hidden mb-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="glass-panel p-4 bg-indigo-900/10 border-indigo-500/20">
+                                <p class="text-xs text-indigo-400 uppercase font-black mb-1">My Monthly Target</p>
+                                <h4 class="text-xl font-black text-white personal-target">Rs. 0.00</h4>
+                            </div>
+                            <div class="glass-panel p-4 bg-emerald-900/10 border-emerald-500/20">
+                                <p class="text-xs text-emerald-400 uppercase font-black mb-1">My Total Monthly Sales</p>
+                                <h4 class="text-xl font-black text-white personal-sales">Rs. 0.00</h4>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- NEW: Distributor Personal Performance Table -->
+                    <div id="dist-perf-collect-wrap" class="hidden mb-8">
+                        <div class="glass-panel overflow-hidden border-indigo-500/10 shadow-xl bg-slate-800/20">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead
+                                        class="bg-indigo-600/10 text-[10px] font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20">
+                                        <tr>
+                                            <th class="py-4 px-6">Distributor Status</th>
+                                            <th class="py-4 px-4 text-center">Monthly Target</th>
+                                            <th class="py-4 px-4 text-center">Dynamic Day Target</th>
+                                            <th class="py-4 px-4 text-center">Achieved (MTD)</th>
+                                            <th class="py-4 px-4 text-center">Face Value</th>
+                                            <th class="py-4 px-4 text-center">MTD Progress</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dist-perf-collect-list">
+                                        <!-- Dynamic content -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <form id="collection-form" class="space-y-6">
+                        <!-- Top Selectors -->
+                        <div
+                            class="glass-panel p-5 grid grid-cols-1 md:grid-cols-3 gap-5 items-end rounded-xl border border-slate-700/50 shadow-lg">
+                            <div>
+                                <label class="block text-xs font-bold mb-2 text-gray-400 uppercase">Settlement
+                                    Date</label>
+                                <input type="date" id="collect-date" class="input-field" required>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold mb-2 text-gray-400 uppercase">Staff Member</label>
+                                <select id="collect-staff" class="input-field" required>
+                                    <option value="" disabled selected>Select Staff...</option>
+                                </select>
+                            </div>
+                            <div>
+                                <button type="button" id="btn-load-issue"
+                                    class="btn-secondary w-full py-[0.65rem] font-bold text-blue-400 border-blue-500/30 hover:bg-blue-500/10">
+                                    <i class="fas fa-sync mr-2"></i> LOAD DAY'S DATA
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="collection-details" class="hidden space-y-6">
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <!-- Stock Activity -->
+                                <div class="glass-panel p-6 shadow-xl">
+                                    <h3
+                                        class="text-lg font-semibold mb-5 flex items-center text-blue-400 border-b border-slate-700/50 pb-3">
+                                        <i class="fas fa-calculator mr-2"></i> Stock & Sales Activity
+                                    </h3>
+                                    <div class="space-y-4">
+                                        <!-- Header -->
+                                        <div
+                                            class="grid grid-cols-5 gap-2 text-[10px] font-black text-gray-500 uppercase tracking-tighter">
+                                            <div class="col-span-1">Item (Face)</div>
+                                            <div class="text-center">Today Stock</div>
+                                            <div class="text-center">Sold Units</div>
+                                            <div class="text-center">In-Hand</div>
+                                            <div class="text-right">Rs. Value</div>
+                                        </div>
+                                        <!-- Rows -->
+                                        <div class="grid grid-cols-5 gap-2 items-center">
+                                            <div class="text-sm font-bold">Rs 48 <span
+                                                    class="text-[9px] text-gray-500">(50)</span></div>
+                                            <input type="number" id="avail-c48"
+                                                class="input-field py-2 px-1 text-center bg-slate-800/40 text-gray-400"
+                                                readonly value="0">
+                                            <input type="number" id="sold-c48"
+                                                class="input-field py-2 px-1 text-center collect-calc highlight-input-blue"
+                                                min="0" value="0">
+                                            <input type="number" id="return-c48"
+                                                class="input-field py-2 px-1 text-center bg-slate-900 border-blue-500/20 text-blue-400 font-black"
+                                                readonly value="0">
+                                            <div id="val-c48" class="text-right text-xs font-bold text-gray-300">0</div>
+                                        </div>
+                                        <div class="grid grid-cols-5 gap-2 items-center">
+                                            <div class="text-sm font-bold">Rs 95 <span
+                                                    class="text-[9px] text-gray-500">(99)</span></div>
+                                            <input type="number" id="avail-c95"
+                                                class="input-field py-2 px-1 text-center bg-slate-800/40 text-gray-400"
+                                                readonly value="0">
+                                            <input type="number" id="sold-c95"
+                                                class="input-field py-2 px-1 text-center collect-calc highlight-input-blue"
+                                                min="0" value="0">
+                                            <input type="number" id="return-c95"
+                                                class="input-field py-2 px-1 text-center bg-slate-900 border-blue-500/20 text-blue-400 font-black"
+                                                readonly value="0">
+                                            <div id="val-c95" class="text-right text-xs font-bold text-gray-300">0</div>
+                                        </div>
+                                        <div class="grid grid-cols-5 gap-2 items-center">
+                                            <div class="text-sm font-bold">Rs 96 <span
+                                                    class="text-[9px] text-gray-500">(100)</span></div>
+                                            <input type="number" id="avail-c96"
+                                                class="input-field py-2 px-1 text-center bg-slate-800/40 text-gray-400"
+                                                readonly value="0">
+                                            <input type="number" id="sold-c96"
+                                                class="input-field py-2 px-1 text-center collect-calc highlight-input-blue"
+                                                min="0" value="0">
+                                            <input type="number" id="return-c96"
+                                                class="input-field py-2 px-1 text-center bg-slate-900 border-blue-500/20 text-blue-400 font-black"
+                                                readonly value="0">
+                                            <div id="val-c96" class="text-right text-xs font-bold text-gray-300">0</div>
+                                        </div>
+                                    </div>
+                                    <div class="mt-6 pt-6 border-t border-slate-700/50 space-y-3">
+                                        <div class="flex justify-between items-center text-xs text-gray-400 px-3">
+                                            <span>Total Cards Sales Value</span>
+                                            <span id="coll-total-card-val" class="font-bold text-gray-200">Rs. 0</span>
+                                        </div>
+                                        <div
+                                            class="flex justify-between items-center bg-blue-900/10 p-3 rounded-lg border border-blue-500/20">
+                                            <span class="text-xs font-black uppercase text-blue-300">Net Card Profit
+                                                (Comm)</span>
+                                            <span id="coll-card-comm" class="text-xl font-black text-white">Rs. 0</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Financial Outcome -->
+                                <div class="space-y-6">
+                                    <div class="glass-panel p-6 shadow-xl border-emerald-500/10">
+                                        <div
+                                            class="flex justify-between items-center mb-5 border-b border-slate-700/50 pb-3">
+                                            <h3 class="text-lg font-semibold flex items-center text-emerald-400">
+                                                <i class="fas fa-wallet mr-2"></i> Reload & Commission
+                                            </h3>
+                                            <div class="text-right">
+                                                <p class="text-[10px] font-black text-gray-500 uppercase">Available
+                                                    Reload</p>
+                                                <p class="text-sm font-bold text-white" id="avail-reload-disp">Rs. 0</p>
+                                                <input type="hidden" id="avail-reload-val" value="0">
+                                            </div>
+                                        </div>
+
+                                        <div class="space-y-4">
+                                            <div>
+                                                <div class="flex justify-between items-center mb-1">
+                                                    <label
+                                                        class="block text-xs font-bold text-gray-400 uppercase">Reload
+                                                        Value Sold (Rs.)</label>
+                                                    <span class="text-[10px] font-black text-emerald-500"
+                                                        id="coll-reload-comm">Com: Rs. 0.00</span>
+                                                </div>
+                                                <input type="number" id="sold-reload"
+                                                    class="input-field py-3 px-4 text-center font-bold border-emerald-500/30 collect-calc highlight-input-green"
+                                                    placeholder="0" min="0" value="0">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">CASH
+                                                    HANDED OVER (Rs.)</label>
+                                                <input type="number" id="collect-handcash"
+                                                    class="input-field py-4 px-4 text-center text-3xl font-black text-white bg-slate-900 border-2 border-indigo-500 shadow-[0_0_20px_rgba(79,70,229,0.2)]"
+                                                    placeholder="0" min="0" value="0">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Summary & Actions -->
+                                    <div
+                                        class="glass-panel p-6 bg-gradient-to-br from-emerald-600/20 to-indigo-900/40 border-indigo-500/30 shadow-2xl relative overflow-hidden">
+                                        <div class="grid grid-cols-2 gap-6 relative z-10">
+                                            <div>
+                                                <p
+                                                    class="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">
+                                                    Today's Sales Total</p>
+                                                <p class="text-lg font-bold text-gray-300 mb-3"
+                                                    id="coll-today-sales-disp">Rs. 0.00</p>
+
+                                                <p
+                                                    class="text-[10px] text-indigo-300 uppercase font-black tracking-widest mb-1">
+                                                    Final Expected Collection</p>
+                                                <p class="text-3xl font-black text-white" id="coll-expected-disp">Rs.
+                                                    0.00</p>
+                                                <div id="prev-shortage-badge"
+                                                    class="hidden mt-1 text-[9px] font-black uppercase text-red-500 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 block w-max">
+                                                    Prev Balance: Rs. 0</div>
+                                                <div id="collect-diff"
+                                                    class="mt-2 text-xs font-bold px-2 py-1 rounded inline-block bg-slate-800 border border-slate-700">
+                                                    Balanced</div>
+                                            </div>
+                                            <div class="text-right">
+                                                <p
+                                                    class="text-[10px] text-emerald-300 uppercase font-black tracking-widest mb-1">
+                                                    Total Shop Commission</p>
+                                                <p class="text-3xl font-black text-emerald-400"
+                                                    id="coll-total-comm-disp">Rs. 0.00</p>
+                                                <p class="text-[9px] text-emerald-500/70 font-bold"
+                                                    id="coll-closing-reload-disp">Rollover Reload: Rs. 0</p>
+                                            </div>
+                                        </div>
+                                        <button type="submit"
+                                            class="btn-primary w-full mt-6 py-4 text-xl font-black uppercase tracking-wider shadow-xl shadow-indigo-500/40 transform hover:scale-[1.02] transition-transform">
+                                            <i class="fas fa-check-double mr-2"></i> Finalize Daily Settlement
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- SETTINGS TAB -->
+                <div id="settings" class="tab-content hidden fade-in p-6">
+                    <div class="mb-6">
+                        <h2 class="text-2xl font-bold text-white mb-1">System Settings</h2>
+                        <p class="text-sm text-gray-400">Configure app parameters and manage your staff.</p>
+                    </div>
+
+                    <div class="space-y-6">
+                        <!-- Target Settings (Top Horizontal Bar) -->
+                        <div class="glass-panel p-6 shadow-lg">
+                            <h3 class="text-lg font-semibold mb-5 pb-2 border-b border-slate-700 font-bold"><i
+                                    class="fas fa-bullseye mr-2 text-red-400"></i> Monthly Target & Working Days</h3>
+                            <form id="target-form" class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                                <div class="md:col-span-1">
+                                    <label
+                                        class="block text-xs font-bold mb-2 text-gray-400 uppercase tracking-wider">Monthly
+                                        Target (Rs.)</label>
+                                    <input type="number" id="setting-target"
+                                        class="input-field py-3 text-lg font-bold text-center bg-slate-800/50"
+                                        placeholder="e.g. 500000" required min="0">
+                                </div>
+                                <div class="md:col-span-1">
+                                    <label
+                                        class="block text-xs font-bold mb-2 text-gray-400 uppercase tracking-wider">Working
+                                        Days</label>
+                                    <input type="number" id="setting-days"
+                                        class="input-field py-3 text-lg font-bold text-center bg-slate-800/50"
+                                        placeholder="e.g. 25" required min="1" max="31">
+                                </div>
+                                <div class="md:col-span-1">
+                                    <label
+                                        class="block text-xs font-bold mb-2 text-indigo-400 uppercase tracking-wider">Admin
+                                        Password</label>
+                                    <input type="text" id="setting-admin-pass"
+                                        class="input-field py-3 text-lg font-bold text-center bg-slate-800/50 border-indigo-500/30"
+                                        placeholder="admin123" required>
+                                </div>
+                                <div>
+                                    <button type="submit"
+                                        class="btn-primary w-full py-3 shadow-lg shadow-indigo-500/20 text-base">
+                                        <i class="fas fa-sync-alt mr-2"></i> Update Settings
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Staff Directory (Below) -->
+                        <div class="glass-panel p-6 shadow-lg">
+                            <h3
+                                class="text-lg font-semibold mb-5 pb-2 border-b border-slate-700 flex justify-between items-center font-bold">
+                                <span><i class="fas fa-users mr-2 text-blue-400"></i> Staff Directory & User
+                                    Management</span>
+                                <span
+                                    class="text-xs bg-slate-800 px-3 py-1 rounded-full text-blue-400 border border-blue-500/30"
+                                    id="staff-count">0</span>
+                            </h3>
+
+                            <!-- Staff Form -->
+                            <form id="staff-form"
+                                class="bg-slate-900/40 p-6 rounded-2xl border border-slate-700/50 mb-8">
+                                <input type="hidden" id="staff-edit-id">
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                                    <div>
+                                        <label
+                                            class="block text-xs font-bold mb-2 text-gray-400 uppercase tracking-wider">Full
+                                            Name</label>
+                                        <input type="text" id="staff-name"
+                                            class="input-field py-3 px-4 text-base bg-slate-800/50"
+                                            placeholder="Ex: John Doe" required>
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="block text-xs font-bold mb-2 text-gray-400 uppercase tracking-wider">Route
+                                            Name</label>
+                                        <input type="text" id="staff-route"
+                                            class="input-field py-3 px-4 text-base bg-slate-800/50"
+                                            placeholder="Ex: Colombo 01" required>
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="block text-xs font-bold mb-2 text-gray-400 uppercase tracking-wider">Phone
+                                            No (Username)</label>
+                                        <input type="text" id="staff-phone"
+                                            class="input-field py-3 px-4 text-base bg-slate-800/50"
+                                            placeholder="07XXXXXXXX" required>
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="block text-xs font-bold mb-2 text-gray-400 uppercase tracking-wider">Account
+                                            Password</label>
+                                        <input type="password" id="staff-password"
+                                            class="input-field py-3 px-4 text-base bg-slate-800/50"
+                                            placeholder="Generate PIN" required>
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="block text-xs font-bold mb-2 text-emerald-500 uppercase tracking-wider">Monthly
+                                            Target (Rs)</label>
+                                        <input type="number" id="staff-target"
+                                            class="input-field py-3 px-4 text-base bg-slate-800/50 border-emerald-500/30 focus:border-emerald-500"
+                                            placeholder="50000" min="0" required>
+                                    </div>
+                                    <div class="flex items-end space-x-3">
+                                        <button type="submit" id="staff-submit-btn"
+                                            class="btn-primary flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 border-none shadow-lg shadow-indigo-500/20">
+                                            <i class="fas fa-save mr-2"></i> Save Staff Member
+                                        </button>
+                                        <button type="button" id="staff-cancel-btn" onclick="cancelStaffEdit()"
+                                            class="btn-secondary hidden h-[50px] w-[50px] flex-none p-0 flex items-center justify-center bg-slate-700 border-slate-600">
+                                            <i class="fas fa-times text-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+
+                            <!-- Staff List -->
+                            <div
+                                class="overflow-hidden rounded-xl border border-slate-700/70 shadow-inner bg-slate-900/60">
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr class="bg-slate-800/80 text-gray-300 text-xs uppercase tracking-wider">
+                                                <th
+                                                    class="py-3 px-4 font-semibold text-center w-12 border-b border-slate-700">
+                                                    #</th>
+                                                <th class="py-3 px-4 font-semibold border-b border-slate-700">Name</th>
+                                                <th class="py-3 px-4 font-semibold border-b border-slate-700">Route</th>
+                                                <th class="py-3 px-4 font-semibold border-b border-slate-700">Target
+                                                </th>
+                                                <th
+                                                    class="py-3 px-4 font-semibold text-right border-b border-slate-700">
+                                                    Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="staff-table-body" class="text-sm divide-y divide-slate-700/50">
+                                            <!-- Loaded dynamically -->
+                                            <tr>
+                                                <td colspan="5" class="py-8 text-center text-gray-500 italic">No staff
+                                                    registered yet. Add staff above.</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Data Management -->
+                    <div class="glass-panel p-6 shadow-lg mt-6 bg-red-900/5 border border-red-500/20">
+                        <h3
+                            class="text-lg font-semibold mb-5 pb-2 border-b border-slate-700 flex justify-between items-center text-rose-400">
+                            <span><i class="fas fa-database mr-2"></i> Database Management (Backup & Restore)</span>
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <!-- Backup -->
+                            <div
+                                class="bg-slate-900/50 p-5 rounded-xl border border-blue-500/30 text-center flex flex-col justify-between">
+                                <div>
+                                    <i class="fas fa-file-export text-3xl text-blue-400 mb-3"></i>
+                                    <h4 class="font-medium text-white mb-2">Backup Data</h4>
+                                    <p class="text-xs text-gray-400 mb-4">Save all your offline data securely to a JSON
+                                        file.</p>
+                                </div>
+                                <button id="btn-global-backup" onclick="backupData()"
+                                    class="btn-primary w-full py-2 shadow-lg shadow-blue-500/20 bg-blue-600 hover:bg-blue-500 border-none flex justify-center">
+                                    <i class="fas fa-download mr-2"></i> Download Backup
+                                </button>
+                            </div>
+
+                            <!-- Restore -->
+                            <div
+                                class="bg-slate-900/50 p-5 rounded-xl border border-emerald-500/30 text-center flex flex-col justify-between">
+                                <div>
+                                    <i class="fas fa-file-import text-3xl text-emerald-400 mb-3"></i>
+                                    <h4 class="font-medium text-white mb-2">Restore Data</h4>
+                                    <p class="text-xs text-gray-400 mb-4">Load past records from a backup JSON file.</p>
+                                </div>
+                                <input type="file" id="restore-file" accept=".json" class="hidden"
+                                    onchange="handleRestoreFile(event)">
+                                <button onclick="document.getElementById('restore-file').click()"
+                                    class="btn-primary w-full py-2 shadow-lg shadow-emerald-500/20 bg-emerald-600 hover:bg-emerald-500 border-none flex justify-center"
+                                    style="background:linear-gradient(135deg, #059669 0%, #10b981 100%)">
+                                    <i class="fas fa-upload mr-2"></i> Select File
+                                </button>
+                            </div>
+
+                            <!-- Reset -->
+                            <div
+                                class="bg-slate-900/50 p-5 rounded-xl border border-red-500/30 text-center flex flex-col justify-between">
+                                <div>
+                                    <i class="fas fa-exclamation-triangle text-3xl text-red-500 mb-3"></i>
+                                    <h4 class="font-medium text-white mb-2">Factory Reset</h4>
+                                    <p class="text-xs text-gray-400 mb-4">Permanently delete all tables and records.</p>
+                                </div>
+                                <button onclick="resetSystem()"
+                                    class="btn-secondary w-full py-2 text-white bg-red-600/80 hover:bg-red-500 border border-red-500/50 flex justify-center"
+                                    style="background:rgba(220, 38, 38, 0.8)">
+                                    <i class="fas fa-trash-alt mr-2"></i> Wipe All Data
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div> <!-- End Settings Tab -->
+
+                <!-- REPORTS TAB -->
+                <div id="reports" class="tab-content hidden fade-in p-6">
+                    <div class="mb-8 flex justify-between items-center no-print text-white">
+                        <div>
+                            <h2 class="text-2xl font-bold mb-tracking-tight">Financial Reports</h2>
+                            <p class="text-sm text-gray-400">View and print performance summaries.</p>
+                        </div>
+                    </div>
+
+                    <!-- Filters -->
+                    <div class="glass-panel p-6 mb-8 no-print border-indigo-500/10">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                            <div>
+                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">Report
+                                    Scope</label>
+                                <select id="report-scope" class="input-field py-2.5"
+                                    onchange="toggleReportStaffPicker()">
+                                    <option value="all">Full Staff Summary (Monthly)</option>
+                                    <option value="single">Single Distributor (History)</option>
+                                </select>
+                            </div>
+                            <div id="report-staff-picker-wrap" class="hidden">
+                                <label
+                                    class="block text-[10px] font-black text-gray-400 uppercase mb-2">Distributor</label>
+                                <select id="report-staff" class="input-field py-2.5"></select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">Select
+                                    Month</label>
+                                <input type="month" id="report-month" class="input-field py-2" required>
+                            </div>
+                            <div>
+                                <button onclick="generateReport()"
+                                    class="btn-primary w-full py-2.5 shadow-indigo-500/20">
+                                    <i class="fas fa-search mr-2"></i> Generate View
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Report Result Area -->
+                    <div id="report-printable-area"
+                        class="bg-white text-slate-900 p-10 min-h-[500px] hidden relative overflow-hidden">
+                        <div class="flex justify-between items-center mb-10 border-b-4 border-indigo-900 pb-6">
+                            <div>
+                                <h1 class="text-4xl font-black text-indigo-900 uppercase tracking-tighter leading-none">
+                                    CRDMS</h1>
+                                <p class="text-[10px] font-black tracking-[0.2em] text-indigo-600 uppercase mt-1">
+                                    Management Analytics System</p>
+                                <p class="text-sm font-bold text-slate-500 mt-4 border-l-2 border-indigo-500 pl-3"
+                                    id="report-title-meta">...</p>
+                            </div>
+                            <div class="text-right flex flex-col items-end">
+                                <!-- Action Buttons -->
+                                <div class="no-print flex space-x-2 mb-4">
+                                    <button onclick="window.print()"
+                                        class="bg-indigo-900 text-white px-8 py-2.5 rounded-lg text-sm font-bold shadow-xl hover:bg-slate-800 transition-all flex items-center">
+                                        <i class="fas fa-print mr-2"></i> Print Performance Report
+                                    </button>
+                                </div>
+                                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Official
+                                    Document</p>
+                                <p class="text-xs font-bold text-slate-900 mt-1">Generated: <span id="report-print-date"
+                                        class="font-mono"></span></p>
+                            </div>
+                        </div>
+
+                        <div id="report-content" class="min-h-[200px]">
+                            <!-- Dynamic Report Results -->
+                        </div>
+
+                        <!-- Small Professional Footer -->
+                        <div class="mt-20 pt-4 border-t border-slate-100 flex justify-between items-center opacity-30">
+                            <div class="text-left text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                © 2026 CRDMS Distribution Network • Authenticated Report
+                            </div>
+                            <div class="text-right">
+                                <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                    System Solution By <span class="font-black">JudeCSilva</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Print Action placeholder -->
+                    <button onclick="window.print()" id="btn-print-report" class="hidden no-print"></button>
+                </div>
+                <!-- System Global Footer -->
+                <footer class="no-print mt-auto py-6 text-center border-t border-slate-700/30 bg-[#1e293b]/20">
+                    <p class="text-[10px] text-slate-500 uppercase tracking-widest font-black mb-1">Centralized
+                        Distribution Logic Engine</p>
+                    <div class="flex items-center justify-center space-x-2">
+                        <span class="h-px w-8 bg-slate-800"></span>
+                        <p class="text-xs font-bold text-slate-400">Powered by <span
+                                class="text-indigo-400">JudeCSilva</span></p>
+                        <span class="h-px w-8 bg-slate-800"></span>
+                    </div>
+                </footer>
+            </div>
+
+            <style>
+                @media print {
+
+                    /* Reset and Hide Other Elements */
+                    @page {
+                        margin: 10mm;
+                        size: auto;
+                    }
+
+                    /* Completely hide everything else */
+                    body {
+                        background: white !important;
+                        color: black !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                    }
+
+                    #login-container,
+                    header,
+                    nav,
+                    footer,
+                    .no-print,
+                    .swal2-container,
+                    #app-container>*:not(.flex-1),
+                    #app-container .flex-1>*:not(#reports),
+                    #reports>*:not(#report-printable-area) {
+                        display: none !important;
+                    }
+
+                    /* Ensure report area is visible and clean */
+                    #app-content,
+                    #app-container,
+                    .flex-1,
+                    #reports,
+                    #report-printable-area {
+                        display: block !important;
+                        visibility: visible !important;
+                        opacity: 1 !important;
+                        background: white !important;
+                        color: black !important;
+                        width: 100% !important;
+                        height: auto !important;
+                        position: static !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        box-shadow: none !important;
+                        border: none !important;
+                        overflow: visible !important;
+                    }
+
+                    /* Force all text inside the report to be black */
+                    #report-printable-area * {
+                        color: black !important;
+                        background: transparent !important;
+                        visibility: visible !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+
+                    /* Compact Table for Print */
+                    table {
+                        width: 100% !important;
+                        table-layout: fixed !important;
+                        border-collapse: collapse !important;
+                        margin-bottom: 15px !important;
+                        font-size: 8.5pt !important;
+                        border: 1px solid #1e293b !important;
+                    }
+
+                    th {
+                        background-color: #f1f5f9 !important;
+                        /* Lighter background for better printing */
+                        color: black !important;
+                        padding: 6px 4px !important;
+                        border: 1px solid #1e293b !important;
+                        font-weight: 700 !important;
+                        text-transform: uppercase !important;
+                        font-size: 8pt !important;
+                    }
+
+                    td {
+                        padding: 5px 4px !important;
+                        border: 1px solid #1e293b !important;
+                        color: black !important;
+                        word-wrap: break-word !important;
+                    }
+
+                    tr:nth-child(even) {
+                        background-color: #f8fafc !important;
+                    }
+
+                    /* Ranking and Summary styling */
+                    .performance-summary-box {
+                        padding: 8px 12px !important;
+                        border-left: 3px solid #000 !important;
+                        background-color: #f8fafc !important;
+                        margin-bottom: 15px !important;
+                        border: 1px solid #e2e8f0 !important;
+                    }
+
+                    h1 {
+                        font-size: 22pt !important;
+                        color: black !important;
+                        margin: 0 !important;
+                    }
+
+                    #report-title-meta {
+                        font-size: 9pt !important;
+                        color: #444 !important;
+                    }
+
+                    /* Grid adjustment for print */
+                    .grid {
+                        display: table !important;
+                        /* Table layout is safer for some print engines */
+                        width: 100% !important;
+                        border-spacing: 10px 0 !important;
+                        margin-bottom: 20px !important;
+                    }
+
+                    .grid>div {
+                        display: table-cell !important;
+                        border: 1px solid #ccc !important;
+                        padding: 10px !important;
+                        width: 33.33% !important;
+                        vertical-align: top !important;
+                    }
+                }
+            </style>
+        </div> <!-- End app-content -->
+
+        <!-- API & App Logic Scripts -->
+        <script src="app.js"></script>
+        <script>
+            // Service Worker Registration for Offline Support
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('./sw.js')
+                        .then(reg => console.log('Service Worker registered', reg))
+                        .catch(err => console.error('Service Worker registration failed', err));
+                });
+            }
+        </script>
+</body>
+
+</html>
