@@ -2,15 +2,17 @@
 const SUPABASE_URL = 'https://yfcerqcrtoczxkvdraxf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlmY2VycWNydG9jenhrdmRyYXhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDkyNzIsImV4cCI6MjA5MTMyNTI3Mn0.UrUUbu2AAE5uuOcsBO-DxPrBoYVYKXhDG7oKJ7f3fPU';
 let supabaseClient = null;
+let supabaseInitError = null;
 
 try {
     if (typeof supabase !== 'undefined') {
         supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         console.log('Supabase initialized');
     } else {
-        console.warn('Supabase library not loaded. Working in offline-only mode.');
+        supabaseInitError = 'Library not found';
     }
 } catch (e) {
+    supabaseInitError = e.message;
     console.error('Supabase initialization failed:', e);
 }
 
@@ -52,59 +54,45 @@ function showLogin() {
 }
 
 async function showApp() {
-    document.getElementById('login-container').classList.add('hidden');
-    document.getElementById('app-content').classList.remove('hidden');
+    try {
+        document.getElementById('login-container').classList.add('hidden');
+        document.getElementById('app-content').classList.remove('hidden');
 
-    document.getElementById('display-user-name').innerText = currentUser.name || 'CRDMS User';
-    document.getElementById('display-user-role').innerText = currentUser.role.toUpperCase() + ' MODE';
+        document.getElementById('display-user-name').innerText = currentUser.name || 'CRDMS User';
+        document.getElementById('display-user-role').innerText = currentUser.role.toUpperCase() + ' MODE';
 
-    // Role-based UI restriction
-    const tabs = ['tab-overview', 'tab-issue', 'tab-collection', 'tab-settings', 'tab-reports'];
-    
-    if(currentUser.role === 'distributor') {
-        document.getElementById('tab-overview').classList.add('hidden');
-        document.getElementById('tab-settings').classList.add('hidden');
-        document.getElementById('tab-issue').classList.remove('hidden');
-        document.getElementById('tab-collection').classList.remove('hidden');
-        document.getElementById('tab-reports').classList.add('hidden');
+        // Role-based UI restriction
+        const tabs = ['tab-overview', 'tab-issue', 'tab-collection', 'tab-settings', 'tab-reports'];
         
-        switchTab('issue');
-        
-        const autoEnforceSelf = async () => {
-            const issueStaff = document.getElementById('issue-staff');
-            const collectStaff = document.getElementById('collect-staff');
-            if(issueStaff && collectStaff) {
-                issueStaff.value = currentUser.id;
-                collectStaff.value = currentUser.id;
-                issueStaff.disabled = true;
-                collectStaff.disabled = true;
-                loadPreviousBalances(); 
-                updateStaffPerformanceDisplay(currentUser.id);
-            }
-        };
-        setTimeout(autoEnforceSelf, 400); 
-    } else {
-        // Admin: Show EVERYTHING
-        tabs.forEach(id => document.getElementById(id).classList.remove('hidden'));
-        document.getElementById('admin-distributor-stats').classList.remove('hidden');
-        
-        // Ensure dropdowns are enabled for Admin
-        const issueStaff = document.getElementById('issue-staff');
-        const collectStaff = document.getElementById('collect-staff');
-        if(issueStaff) issueStaff.disabled = false;
-        if(collectStaff) collectStaff.disabled = false;
+        if(currentUser.role === 'distributor') {
+            document.getElementById('tab-overview').classList.add('hidden');
+            document.getElementById('tab-settings').classList.add('hidden');
+            document.getElementById('tab-issue').classList.remove('hidden');
+            document.getElementById('tab-collection').classList.remove('hidden');
+            document.getElementById('tab-reports').classList.add('hidden');
+            
+            switchTab('issue');
+        } else {
+            tabs.forEach(id => document.getElementById(id).classList.remove('hidden'));
+            switchTab('overview');
+        }
 
-        switchTab('overview');
-    }
+        // Load initial data
+        try {
+            await loadStaffDropdowns();
+            await updateDashboardCard();
+            await renderStaffTable();
+        } catch (loadErr) {
+            console.error('Data load error:', loadErr);
+        }
 
-    // Load initial data
-    await loadStaffDropdowns();
-    await updateDashboardCard();
-    await renderStaffTable();
-
-    // Start Syncing after login
-    if(typeof SyncManager !== 'undefined') {
-        SyncManager.init();
+        // Start Syncing after login
+        if(typeof SyncManager !== 'undefined' && supabaseClient) {
+            SyncManager.init();
+        }
+    } catch (globalAppErr) {
+        console.error('ShowApp Error:', globalAppErr);
+        Swal.fire({ icon: 'error', title: 'Loading Error', text: 'Error in showApp: ' + globalAppErr.message });
     }
 }
 

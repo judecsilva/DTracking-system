@@ -244,11 +244,9 @@
                         <i class="fas fa-microscope mr-1"></i> System Diagnostic
                     </button>
                 </div>
-                <p class="text-[10px] text-gray-600 uppercase tracking-[0.2em]">Secure Professional Portal • v7.0</p>
-            </div>
-            
-            <script>
-                function runDiagnostics() {
+                
+                <script>
+                   function runDiagnostics() {
                     try {
                         let missing = [];
                         if (typeof Dexie === 'undefined') missing.push('Dexie');
@@ -258,21 +256,24 @@
                         
                         let status = "Offline Mode";
                         try {
-                            if (typeof supabaseClient !== 'undefined' && supabaseClient !== null) {
+                            if (window.supabaseClient) {
                                 status = "Connected";
+                            } else if (window.supabaseInitError) {
+                                status = "Offline (" + window.supabaseInitError + ")";
                             }
                         } catch(e) {}
 
                         if (missing.length > 0) {
-                            alert('CRITICAL ERROR: The following files are missing from your lib/ folder: ' + missing.join(', ') + '. Please check your GitHub Files.');
+                            alert('CRITICAL ERROR: Files missing in lib/ : ' + missing.join(', ') + '. Check your GitHub folder.');
                         } else {
-                            alert('SYSTEM HEALTH: All libraries are loaded correctly! Cloud status: ' + status);
+                            alert('SYSTEM HEALTH: All libraries are loaded correctly! Cloud Status: ' + status);
                         }
                     } catch (err) {
                         alert('System Error during check: ' + err.message);
                     }
                 }
             </script>
+            <p class="text-[10px] text-gray-600 uppercase tracking-[0.2em] mt-4">v8.0</p>
         </div>
     </div>
 
