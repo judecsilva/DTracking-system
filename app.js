@@ -1,7 +1,18 @@
 // --- Supabase Configuration ---
 const SUPABASE_URL = 'https://yfcerqcrtoczxkvdraxf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlmY2VycWNydG9jenhrdmRyYXhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDkyNzIsImV4cCI6MjA5MTMyNTI3Mn0.UrUUbu2AAE5uuOcsBO-DxPrBoYVYKXhDG7oKJ7f3fPU';
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let supabaseClient = null;
+
+try {
+    if (typeof supabase !== 'undefined') {
+        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('Supabase initialized');
+    } else {
+        console.warn('Supabase library not loaded. Working in offline-only mode.');
+    }
+} catch (e) {
+    console.error('Supabase initialization failed:', e);
+}
 
 // --- Database Configuration (Dexie) ---
 const db = new Dexie("DistributionDB");
@@ -90,6 +101,11 @@ async function showApp() {
     await loadStaffDropdowns();
     await updateDashboardCard();
     await renderStaffTable();
+
+    // Start Syncing after login
+    if(typeof SyncManager !== 'undefined') {
+        SyncManager.init();
+    }
 }
 
 window.logout = function() {
@@ -301,8 +317,8 @@ const SyncManager = {
     }
 };
 
-// Start Sync on Load
-SyncManager.init();
+// Start Sync on Load (Disabled globally, now inside showApp)
+// SyncManager.init();
 
 function updateMonthDisplay() {
     const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
