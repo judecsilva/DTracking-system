@@ -1,7 +1,7 @@
 // --- Supabase Configuration ---
 const SUPABASE_URL = 'https://yfcerqcrtoczxkvdraxf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlmY2VycWNydG9jenhrdmRyYXhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDkyNzIsImV4cCI6MjA5MTMyNTI3Mn0.UrUUbu2AAE5uuOcsBO-DxPrBoYVYKXhDG7oKJ7f3fPU';
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // --- Database Configuration (Dexie) ---
 const db = new Dexie("DistributionDB");
@@ -201,7 +201,7 @@ const SyncManager = {
     async syncSettings() {
         const local = await db.settings.where('synced').notEqual(1).toArray();
         for (const s of local) {
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('settings')
                 .upsert({ 
                     target_amount: s.targetAmount, 
@@ -216,7 +216,7 @@ const SyncManager = {
         // Push local changes
         const local = await db.staff.where('synced').notEqual(1).toArray();
         for (const s of local) {
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('staff')
                 .upsert({ 
                     name: s.name, 
@@ -233,7 +233,7 @@ const SyncManager = {
         }
 
         // Pull remote changes
-        const { data: remote } = await supabase.from('staff').select();
+        const { data: remote } = await supabaseClient.from('staff').select();
         if(remote) {
             for (const rs of remote) {
                 const existing = await db.staff.where('phone').equals(rs.phone).first();
@@ -258,7 +258,7 @@ const SyncManager = {
             const staff = await db.staff.get(r.staffId);
             if(!staff || !staff.cloud_id) continue;
 
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('daily_issues')
                 .upsert({
                     staff_id: staff.cloud_id,
@@ -279,7 +279,7 @@ const SyncManager = {
             const staff = await db.staff.get(r.staffId);
             if(!staff || !staff.cloud_id) continue;
 
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('daily_sales')
                 .upsert({
                     staff_id: staff.cloud_id,
