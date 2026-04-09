@@ -249,16 +249,27 @@
             
             <script>
                 function runDiagnostics() {
-                    let missing = [];
-                    if (typeof Dexie === 'undefined') missing.push('Dexie');
-                    if (typeof Swal === 'undefined') missing.push('SweetAlert2');
-                    if (typeof Chart === 'undefined') missing.push('Chart.js');
-                    if (typeof supabase === 'undefined') missing.push('Supabase Client');
-                    
-                    if (missing.length > 0) {
-                        alert('CRITICAL ERROR: The following libraries are missing from your lib/ folder: ' + missing.join(', ') + '. Please ensure you uploaded the entire lib/ folder to GitHub.');
-                    } else {
-                        alert('SYSTEM HEALTH: All libraries are loaded correctly! Supabase status: ' + (supabaseClient ? 'Connected' : 'Offline Mode'));
+                    try {
+                        let missing = [];
+                        if (typeof Dexie === 'undefined') missing.push('Dexie');
+                        if (typeof Swal === 'undefined') missing.push('SweetAlert2');
+                        if (typeof Chart === 'undefined') missing.push('Chart.js');
+                        if (typeof supabase === 'undefined') missing.push('Supabase Client');
+                        
+                        let status = "Offline Mode";
+                        try {
+                            if (typeof supabaseClient !== 'undefined' && supabaseClient !== null) {
+                                status = "Connected";
+                            }
+                        } catch(e) {}
+
+                        if (missing.length > 0) {
+                            alert('CRITICAL ERROR: The following files are missing from your lib/ folder: ' + missing.join(', ') + '. Please check your GitHub Files.');
+                        } else {
+                            alert('SYSTEM HEALTH: All libraries are loaded correctly! Cloud status: ' + status);
+                        }
+                    } catch (err) {
+                        alert('System Error during check: ' + err.message);
                     }
                 }
             </script>
