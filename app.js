@@ -1077,25 +1077,38 @@ function setupEventListeners() {
         const user = document.getElementById('login-username').value;
         const pass = document.getElementById('login-password').value;
 
-        // Admin check
-        let settings = await db.settings.toCollection().first();
-        const adminPass = (settings && settings.adminPassword) ? settings.adminPassword : 'admin123';
-        
-        if(user === 'admin' && pass === adminPass) {
-            currentUser = { id: 0, name: 'Administrator', role: 'admin' };
-            localStorage.setItem('crdms_user', JSON.stringify(currentUser));
-            showApp();
-            return;
-        }
+        try {
+            // Admin check
+            let settings;
+            try {
+                settings = await db.settings.toCollection().first();
+            } catch (dexieErr) {
+                console.error('Dexie database error:', dexieErr);
+                Swal.fire({ icon: 'error', title: 'Database Error', text: 'Local database is busy or corrupted. Please refresh.', background: '#1e293b', color: '#fff'});
+                return;
+            }
 
-        // Staff check
-        let staff = await db.staff.where('phone').equals(user).first();
-        if(staff && staff.password === pass) {
-            currentUser = { id: staff.id, name: staff.name, role: 'distributor' };
-            localStorage.setItem('crdms_user', JSON.stringify(currentUser));
-            showApp();
-        } else {
-            Swal.fire({ icon: 'error', title: 'Login Failed', text: 'Invalid phone or password', background: '#1e293b', color: '#fff'});
+            const adminPass = (settings && settings.adminPassword) ? settings.adminPassword : 'admin123';
+            
+            if(user === 'admin' && pass === adminPass) {
+                currentUser = { id: 0, name: 'Administrator', role: 'admin' };
+                localStorage.setItem('crdms_user', JSON.stringify(currentUser));
+                showApp();
+                return;
+            }
+
+            // Staff check
+            let staff = await db.staff.where('phone').equals(user).first();
+            if(staff && staff.password === pass) {
+                currentUser = { id: staff.id, name: staff.name, role: 'distributor' };
+                localStorage.setItem('crdms_user', JSON.stringify(currentUser));
+                showApp();
+            } else {
+                Swal.fire({ icon: 'error', title: 'Login Failed', text: 'Invalid username or password.', background: '#1e293b', color: '#fff'});
+            }
+        } catch (globalErr) {
+            console.error('Global login error:', globalErr);
+            Swal.fire({ icon: 'error', title: 'System Error', text: 'Something went wrong: ' + globalErr.message, background: '#1e293b', color: '#fff'});
         }
     });
 
