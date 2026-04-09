@@ -4,17 +4,23 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 window.supabaseClient = null;
 window.supabaseInitError = null;
 
-try {
-    if (typeof supabase !== 'undefined') {
-        window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('Supabase initialized');
-    } else {
-        window.supabaseInitError = 'Library not found';
+function initSupabase() {
+    try {
+        const lib = window.supabase || (typeof supabase !== 'undefined' ? supabase : null);
+        if (lib && typeof lib.createClient === 'function') {
+            window.supabaseClient = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            console.log('Supabase Initialized Successfully');
+        } else {
+            window.supabaseInitError = 'Supabase library or createClient method not found';
+        }
+    } catch (e) {
+        window.supabaseInitError = e.message;
+        console.error('Supabase Initialization Error:', e);
     }
-} catch (e) {
-    window.supabaseInitError = e.message;
-    console.error('Supabase initialization failed:', e);
 }
+
+// Global scope initialization
+initSupabase();
 
 // --- Database Configuration (Dexie) ---
 const db = new Dexie("DistributionDB");
@@ -30,16 +36,6 @@ let performanceChart = null;
 
 // --- State & DOM Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // Check local session
-    if(currentUser) {
-        showApp();
-    } else {
-        showLogin();
-    }
-
-    // Set default dates
-    document.getElementById('issue-date').value = getTodayString();
-    document.getElementById('collect-date').value = getTodayString();
     const repMonth = document.getElementById('report-month');
     if(repMonth) repMonth.value = getCurrentMonthString();
     updateMonthDisplay();
