@@ -1,18 +1,18 @@
 // --- Supabase Configuration ---
 const SUPABASE_URL = 'https://yfcerqcrtoczxkvdraxf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlmY2VycWNydG9jenhrdmRyYXhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDkyNzIsImV4cCI6MjA5MTMyNTI3Mn0.UrUUbu2AAE5uuOcsBO-DxPrBoYVYKXhDG7oKJ7f3fPU';
-let supabaseClient = null;
-let supabaseInitError = null;
+window.supabaseClient = null;
+window.supabaseInitError = null;
 
 try {
     if (typeof supabase !== 'undefined') {
-        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        window.supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         console.log('Supabase initialized');
     } else {
-        supabaseInitError = 'Library not found';
+        window.supabaseInitError = 'Library not found';
     }
 } catch (e) {
-    supabaseInitError = e.message;
+    window.supabaseInitError = e.message;
     console.error('Supabase initialization failed:', e);
 }
 
@@ -1106,6 +1106,7 @@ function setupEventListeners() {
         const pass = document.getElementById('login-password').value;
 
         try {
+            console.log('Login attempt started...'); // Debug
             // Admin check
             let settings;
             try {
