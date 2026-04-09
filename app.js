@@ -317,8 +317,32 @@ const SyncManager = {
     }
 };
 
-// Start Sync on Load (Disabled globally, now inside showApp)
-// SyncManager.init();
+
+// --- System Reset & Cache Recovery ---
+window.clearSystemCache = async function() {
+    if(!confirm("Are you sure? This will reset all local sessions and reload the system.")) return;
+    
+    // Clear Local Storage
+    localStorage.clear();
+    
+    // Clear IndexedDB
+    try {
+        await db.delete();
+        console.log("Database deleted");
+    } catch (e) { console.error("Could not delete DB", e); }
+    
+    // Unregister Service Workers
+    if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let registration of registrations) {
+            await registration.unregister();
+            console.log("Service Worker unregistered");
+        }
+    }
+    
+    // Hard Reload
+    location.reload(true);
+}
 
 function updateMonthDisplay() {
     const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
