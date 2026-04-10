@@ -15,7 +15,7 @@
     <script src="lib/tailwind.js"></script>
     <script src="lib/sweetalert2.js"></script>
     <script src="lib/chart.js"></script>
-    <script src="lib/supabase.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <!-- Icons (Requires internet for first load, then cached by SW) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -235,45 +235,7 @@
                 </div>
                 <button type="submit" class="btn-primary w-full py-3 text-lg mt-2">Login</button>
             </form>
-            <div class="mt-8 flex flex-col items-center space-y-4">
-                <div class="flex space-x-4">
-                    <button onclick="if(confirm('Clear all cache and reset?')){clearSystemCache()}" class="text-[10px] text-gray-500 hover:text-indigo-400 transition-colors uppercase tracking-widest border-b border-gray-700 pb-1">
-                        <i class="fas fa-sync-alt mr-1"></i> Reset & Clear Cache
-                    </button>
-                    <button onclick="let m=[]; if(typeof Dexie==='undefined')m.push('Dexie'); if(typeof Swal==='undefined')m.push('Swal'); if(typeof Chart==='undefined')m.push('Chart'); if(typeof supabase==='undefined')m.push('Supabase'); if(m.length>0){alert('CRITICAL ERROR: Files missing in lib/ : '+m.join(', '))}else{alert('SUCCESS: All Libraries Loaded! Cloud Status: '+(typeof supabaseClient!=='undefined'&&supabaseClient?'Connected':'Offline'))}" class="text-[10px] text-emerald-600 hover:text-emerald-400 transition-colors uppercase tracking-widest border-b border-emerald-900 pb-1">
-                        <i class="fas fa-microscope mr-1"></i> System Diagnostic
-                    </button>
-                </div>
-                
-                <script>
-                   function runDiagnostics() {
-                    try {
-                        let missing = [];
-                        if (typeof Dexie === 'undefined') missing.push('Dexie');
-                        if (typeof Swal === 'undefined') missing.push('SweetAlert2');
-                        if (typeof Chart === 'undefined') missing.push('Chart.js');
-                        if (typeof supabase === 'undefined') missing.push('Supabase Client');
-                        
-                        let status = "Offline Mode";
-                        try {
-                            if (window.supabaseClient) {
-                                status = "Connected";
-                            } else if (window.supabaseInitError) {
-                                status = "Offline (" + window.supabaseInitError + ")";
-                            }
-                        } catch(e) {}
-
-                        if (missing.length > 0) {
-                            alert('CRITICAL ERROR: Files missing in lib/ : ' + missing.join(', ') + '. Check your GitHub folder.');
-                        } else {
-                            alert('SYSTEM HEALTH: All libraries are loaded correctly! Cloud Status: ' + status);
-                        }
-                    } catch (err) {
-                        alert('System Error during check: ' + err.message);
-                    }
-                }
-            </script>
-            <p class="text-[10px] text-gray-600 uppercase tracking-[0.2em] mt-4">v8.0</p>
+            <p class="text-xs text-gray-600">Secure Professional Portal</p>
         </div>
     </div>
 
@@ -293,10 +255,6 @@
                 </div>
             </div>
             <div class="flex items-center space-x-3">
-                <div id="sync-status" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/50">
-                    <div class="sync-dot w-2 h-2 rounded-full bg-slate-500 animate-pulse"></div>
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-tighter" id="sync-text">Cloud Sync</span>
-                </div>
                 <button onclick="logout()"
                     class="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg border border-red-500/30 transition-all">
                     <i class="fas fa-sign-out-alt mr-1"></i> Logout
@@ -1399,6 +1357,7 @@
         </div> <!-- End app-content -->
 
         <!-- API & App Logic Scripts -->
+        <script src="app.js"></script>
         <script>
             // Service Worker Registration for Offline Support
             if ('serviceWorker' in navigator) {
@@ -1409,9 +1368,6 @@
                 });
             }
         </script>
-        
-        <!-- MAIN APP LOGIC -->
-        <script src="app.js"></script>
 </body>
 
 </html>
