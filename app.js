@@ -12,6 +12,9 @@ let performanceChart = null;
 
 // --- State & DOM Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
+    // Initial sync connection check (optional)
+    if(typeof supabaseClient !== 'undefined') console.log("Supabase Client Ready");
+    
     // Check local session
     if(currentUser) {
         showApp();
@@ -613,6 +616,18 @@ async function handleIssueSubmit(e) {
         calculateIssueTotal();
         updateStaffPerformanceDisplay("");
         updateDashboardCard();
+
+        // --- Online Sync ---
+        syncToCloud('daily_issues', {
+            staff_id: data.staffId,
+            date: data.date,
+            card48: data.card48,
+            card95: data.card95,
+            card96: data.card96,
+            reload_cash: data.reloadCash,
+            total_issued_value: data.totalIssuedValue
+        }, { staff_id: data.staffId, date: data.date });
+
     } catch(err) {
         console.error(err);
         showToast('Error saving data', 'error');
@@ -896,6 +911,20 @@ async function handleCollectionSubmit(e) {
         previousShortage = 0;
 
         updateDashboardCard();
+
+        // --- Online Sync ---
+        syncToCloud('daily_sales', {
+            staff_id: data.staffId,
+            date: data.date,
+            sold_card48: data.soldCard48,
+            sold_card95: data.soldCard95,
+            sold_card96: data.soldCard96,
+            sold_reload_cash: data.soldReloadCash,
+            hand_cash: data.handCash,
+            total_commission: data.totalCommission,
+            shortage_amt: data.shortageAmt
+        }, { staff_id: data.staffId, date: data.date });
+
     } catch(err) {
         console.error(err);
         showToast('Error saving data', 'error');
@@ -968,6 +997,19 @@ function setupEventListeners() {
             document.getElementById('staff-form').reset();
             showToast('Staff Added');
         }
+        
+        // --- Online Sync Staff ---
+        const sList = await db.staff.toArray();
+        for(let s of sList) {
+            syncToCloud('staff', {
+                name: s.name,
+                route_name: s.routeName,
+                phone: s.phone,
+                password: s.password,
+                target: s.target
+            }, { phone: s.phone });
+        }
+
         loadStaffDropdowns();
         renderStaffTable();
     });
@@ -986,6 +1028,14 @@ function setupEventListeners() {
         }
         showToast('Settings Updated');
         updateDashboardCard();
+
+        // --- Online Sync Settings ---
+        syncToCloud('settings', {
+            id: 1,
+            target_amount: targetAmount,
+            working_days: workingDays,
+            admin_password: adminPassword
+        }, { id: 1 });
     });
 
     // Issue Modifiers
@@ -1694,5 +1744,85 @@ async function checkBackupReminder() {
     }
 }
 
-// End of Report Logic
+// --- Online Sync Helper ---
+async function syncToCloud(table, data, matchFields) {
+    if (typeof supabaseClient === 'undefined') return;
+    
+    try {
+        const { data: existing, error: checkError } = await supabaseClient
+            .from(table)
+            .select('*')
+            .match(matchFields)
+            .maybeSingle();
+
+        if (checkError) throw checkError;
+
+        if (existing) {
+            await supabaseClient.from(table).update(data).match(matchFields);
+        } else {
+            await supabaseClient.from(table).insert([data]);
+        }
+        console.log(`Synced ${table} to cloud`);
+    } catch (err) {
+        console.warn(`Sync failed for ${table}:`, err.message);
+    }
+}
+
+async function manualCloudSync() {
+    if (typeof supabaseClient === 'undefined') {
+        Swal.fire({ icon: 'error', title: 'Sync Failed', text: 'Supabase is not initialized.', background: '#1e293b', color: '#fff'});
+        return;
+    }
+
+    Swal.fire({
+        title: 'Cloud Syncing...',
+        text: 'Please wait while we push all local data to Supabase.',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); },
+        background: '#1e293b',
+        color: '#fff'
+    });
+
+    try {
+        // 1. Sync Staff
+        const staffs = await db.staff.toArray();
+        for(let s of staffs) {
+            await syncToCloud('staff', {
+                name: s.name, route_name: s.routeName, phone: s.phone, password: s.password, target: s.target
+            }, { phone: s.phone });
+        }
+
+        // 2. Sync Issues
+        const issues = await db.dailyIssues.toArray();
+        for(let r of issues) {
+            await syncToCloud('daily_issues', {
+                staff_id: r.staffId, date: r.date, card48: r.card48, card95: r.card95, card96: r.card96, 
+                reload_cash: r.reloadCash, total_issued_value: r.totalIssuedValue
+            }, { staff_id: r.staffId, date: r.date });
+        }
+
+        // 3. Sync Sales
+        const sales = await db.dailySales.toArray();
+        for(let r of sales) {
+            await syncToCloud('daily_sales', {
+                staff_id: r.staffId, date: r.date, sold_card48: r.soldCard48, sold_card95: r.soldCard95, 
+                sold_card96: r.soldCard96, sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash, 
+                total_commission: r.totalCommission, shortage_amt: r.shortageAmt
+            }, { staff_id: r.staffId, date: r.date });
+        }
+
+        // 4. Sync Settings
+        const config = await db.settings.toCollection().first();
+        if(config) {
+            await syncToCloud('settings', {
+                id: 1, target_amount: config.targetAmount, working_days: config.workingDays, admin_password: config.adminPassword
+            }, { id: 1 });
+        }
+
+        Swal.fire({ icon: 'success', title: 'Manual Sync Complete', text: 'All local data has been mirrored to the cloud.', background: '#1e293b', color: '#fff'});
+    } catch (err) {
+        console.error(err);
+        Swal.fire({ icon: 'error', title: 'Sync Failed', text: err.message, background: '#1e293b', color: '#fff'});
+    }
+}
 

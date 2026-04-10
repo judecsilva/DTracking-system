@@ -1120,6 +1120,27 @@
                                     <i class="fas fa-trash-alt mr-2"></i> Wipe All Data
                                 </button>
                             </div>
+
+                            <!-- Cloud Sync -->
+                            <div
+                                class="bg-slate-900/50 p-5 rounded-xl border border-indigo-500/30 text-center flex flex-col justify-between md:col-span-3 mt-4">
+                                <div class="flex flex-col md:flex-row items-center justify-between text-left">
+                                    <div class="mb-4 md:mb-0">
+                                        <h4 class="font-medium text-white mb-2 flex items-center">
+                                            <i class="fas fa-cloud-upload-alt text-indigo-400 mr-2"></i> Cloud
+                                            Synchronization
+                                        </h4>
+                                        <p class="text-xs text-gray-400">Sync all your local offline data to your
+                                            Supabase cloud database manually. <br><span
+                                                class="text-[10px] text-indigo-400 font-bold">Recommended after first
+                                                online setup.</span></p>
+                                    </div>
+                                    <button onclick="manualCloudSync()"
+                                        class="btn-primary py-3 px-8 shadow-lg shadow-indigo-500/20 bg-indigo-600 hover:bg-indigo-500 border-none flex justify-center items-center font-black uppercase tracking-widest text-[10px]">
+                                        <i class="fas fa-sync-alt mr-2"></i> Push Data to Cloud
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div> <!-- End Settings Tab -->
@@ -1356,6 +1377,13 @@
         </div> <!-- End app-content -->
 
         <!-- API & App Logic Scripts -->
+        <script src="lib/supabase.js"></script>
+        <script>
+            // Supabase Configuration
+            const SUPABASE_URL = "https://ayshfnqysfisfxhlsgjw.supabase.co";
+            const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5c2hmbnF5c2Zpc2Z4bHNnandhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjYyNDUsImV4cCI6MjA5MTM0MjI0NX0.Lu4h2TlPoDJOdheg1BarRHp9WWDSTNe0hNgZf6oJvfc";
+            const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        </script>
         <script src="app.js"></script>
         <script>
             // Service Worker Registration for Offline Support
