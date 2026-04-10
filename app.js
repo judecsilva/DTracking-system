@@ -1,7 +1,11 @@
-// --- Database Configuration (Supabase) ---
-const supabaseUrl = 'https://ayshfnqysfisfxlsgjwa.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5c2hmbnF5c2Zpc2Z4bHNnandhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjYyNDUsImV4cCI6MjA5MTM0MjI0NX0.Lu4h2TlPoDJOdheg1BarRHp9WWDSTNe0hNgZf6oJvfc';
-const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+// --- Database Configuration (Dexie) ---
+const db = new Dexie("DistributionDB");
+db.version(3).stores({
+    settings: '++id, targetAmount, adminPassword',
+    staff: '++id, name, routeName, phone, password',
+    dailyIssues: '++id, staffId, date, [date+staffId]',
+    dailySales: '++id, staffId, date, [date+staffId]'
+});
 
 let currentUser = JSON.parse(localStorage.getItem('crdms_user') || 'null');
 let performanceChart = null;
@@ -141,81 +145,6 @@ function updateMonthDisplay() {
     document.getElementById('overview-month').innerText = `${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// --- Auth Logic ---
-async function handleLogin(e) {
-    e.preventDefault();
-    const phone = document.getElementById('login-username').value;
-    const pass = document.getElementById('login-password').value;
-
-    // Admin Shortcut (Optional - but let's check settings table)
-    const { data: settings } = await _supabase.from('settings').select('*').limit(1).single();
-    if (settings && phone === 'admin' && pass === settings.admin_password) {
-        currentUser = { id: 'admin', name: 'Administrator', role: 'admin' };
-        localStorage.setItem('crdms_user', JSON.stringify(currentUser));
-        showApp();
-        return;
-    }
-
-    // Check Staff table
-    const { data: staff, error } = await _supabase.from('staff').select('*').eq('phone', phone).eq('password', pass).single();
-    if(staff) {
-        currentUser = { ...staff, role: 'distributor' };
-        localStorage.setItem('crdms_user', JSON.stringify(currentUser));
-        showApp();
-    } else {
-        Swal.fire({
-            icon: 'error',
-            title: 'Login Failed',
-            text: 'Invalid credentials. Please contact Administrator.',
-            background: '#1e293b',
-            color: '#fff'
-        });
-    }
-}
-
-async function loadStaffDropdowns() {
-    const { data: list } = await _supabase.from('staff').select('*');
-    if(!list) return;
-
-    const issueStaff = document.getElementById('issue-staff');
-    const collectStaff = document.getElementById('collect-staff');
-    
-    let html = '<option value="" disabled selected>Select Staff...</option>';
-    list.forEach(s => {
-        html += `<option value="${s.id}">${s.name} (${s.route_name})</option>`;
-    });
-
-    if(issueStaff) issueStaff.innerHTML = html;
-    if(collectStaff) collectStaff.innerHTML = html;
-}
-
-// Event Listeners (Moved inside a function for clarity)
-function setupEventListeners() {
-    const loginForm = document.getElementById('login-form');
-    if(loginForm) loginForm.addEventListener('submit', handleLogin);
-
-    const issueForm = document.getElementById('issue-form');
-    if(issueForm) issueForm.addEventListener('submit', handleIssueSubmit);
-
-    const collBtn = document.getElementById('btn-load-issue');
-    if(collBtn) collBtn.addEventListener('click', handleLoadExpectedData);
-
-    const collForm = document.getElementById('collection-form');
-    if(collForm) collForm.addEventListener('submit', handleCollectionSubmit);
-
-    // Dynamic calculations
-    document.querySelectorAll('.issue-calc').forEach(input => {
-        input.addEventListener('input', calculateIssueTotal);
-    });
-
-    document.querySelectorAll('.collect-calc').forEach(input => {
-        input.addEventListener('input', calculateExpectedCash);
-    });
-    
-    const handCashEl = document.getElementById('collect-handcash');
-    if(handCashEl) handCashEl.addEventListener('input', calculateExpectedCash);
-}
-
 async function showToast(title, icon = 'success') {
     const Toast = Swal.mixin({
         toast: true,
@@ -228,11 +157,11 @@ async function showToast(title, icon = 'success') {
     });
     Toast.fire({ icon, title });
 }
+
+// --- Dashboard Logic ---
 async function updateDashboardCard() {
-    // Get target from settings table
-    const { data: settingsData } = await _supabase.from('settings').select('*').limit(1).single();
-    let targetSetting = settingsData;
-    let workingDays = targetSetting && targetSetting.working_days ? targetSetting.working_days : 25;
+    let targetSetting = await db.settings.toCollection().first();
+    let workingDays = targetSetting && targetSetting.workingDays ? targetSetting.workingDays : 25;
     let monthlyTarget = 0;
     let monthSales = [];
     let todayIssuesList = [];
@@ -242,50 +171,39 @@ async function updateDashboardCard() {
 
     if(currentUser && currentUser.role === 'distributor') {
         // Distributor Stats
-        const { data: staff } = await _supabase.from('staff').select('*').eq('id', currentUser.id).single();
+        const staff = await db.staff.get(currentUser.id);
         monthlyTarget = staff ? staff.target : 0;
         
-        const { data: sales } = await _supabase.from('daily_sales')
-            .select('*')
-            .eq('staff_id', currentUser.id)
-            .gte('date', currentMonth + '-01')
-            .lte('date', currentMonth + '-31');
-        monthSales = sales || [];
+        monthSales = await db.dailySales
+            .where({staffId: currentUser.id})
+            .filter(record => record.date.startsWith(currentMonth))
+            .toArray();
             
-        const { data: issuesToday } = await _supabase.from('daily_issues').select('*').eq('date', todayStr).eq('staff_id', currentUser.id);
-        todayIssuesList = issuesToday || [];
-
-        const { data: salesToday } = await _supabase.from('daily_sales').select('*').eq('date', todayStr).eq('staff_id', currentUser.id);
-        todaySalesList = salesToday || [];
+        todayIssuesList = await db.dailyIssues.where({date: todayStr, staffId: currentUser.id}).toArray();
+        todaySalesList = await db.dailySales.where({date: todayStr, staffId: currentUser.id}).toArray();
         
         // Update header if needed or a sub-label
-        document.getElementById('display-user-role').innerText = 'DISTRIBUTOR (' + (staff ? staff.route_name : '') + ')';
+        document.getElementById('display-user-role').innerText = 'DISTRIBUTOR (' + (staff ? staff.routeName : '') + ')';
     } else {
         // Global Admin Stats
-        monthlyTarget = targetSetting ? targetSetting.target_amount : 0;
-        
-        const { data: sales } = await _supabase.from('daily_sales')
-            .select('*')
-            .gte('date', currentMonth + '-01')
-            .lte('date', currentMonth + '-31');
-        monthSales = sales || [];
+        monthlyTarget = targetSetting ? targetSetting.targetAmount : 0;
+        monthSales = await db.dailySales
+            .filter(record => record.date.startsWith(currentMonth))
+            .toArray();
             
-        const { data: issuesToday } = await _supabase.from('daily_issues').select('*').eq('date', todayStr);
-        todayIssuesList = issuesToday || [];
-
-        const { data: salesToday } = await _supabase.from('daily_sales').select('*').eq('date', todayStr);
-        todaySalesList = salesToday || [];
+        todayIssuesList = await db.dailyIssues.filter(r => r.date === todayStr).toArray();
+        todaySalesList = await db.dailySales.filter(r => r.date === todayStr).toArray();
     }
     
     let totalSales = monthSales.reduce((sum, record) => {
-        let saleValue = (Number(record.sold_card_48 || 0) * 48) + 
-                        (Number(record.sold_card_95 || 0) * 95) + 
-                        (Number(record.sold_card__96 || 0) * 96) + 
-                        Number(record.sold_reload_cash || 0);
+        let saleValue = (Number(record.soldCard48 || 0) * 48) + 
+                        (Number(record.soldCard95 || 0) * 95) + 
+                        (Number(record.soldCard96 || 0) * 96) + 
+                        Number(record.soldReloadCash || 0);
         return sum + saleValue;
     }, 0);
 
-    let totalMonthCommission = monthSales.reduce((sum, record) => sum + (Number(record.total_commission) || 0), 0);
+    let totalMonthCommission = monthSales.reduce((sum, record) => sum + (Number(record.totalCommission) || 0), 0);
     const monthFaceValue = totalSales + totalMonthCommission;
     
     // 3. Compute Remaining Days & Dynamic Target
@@ -300,8 +218,8 @@ async function updateDashboardCard() {
     let perc = (totalSales / (monthlyTarget || 1)) * 100;
     if(perc > 100) perc = 100;
 
-    let totalTodayIssued = todayIssuesList.reduce((sum, r) => sum + Number(r.total_issued_value || 0), 0);
-    let totalTodayCollected = todaySalesList.reduce((sum, r) => sum + Number(r.hand_cash || 0), 0);
+    let totalTodayIssued = todayIssuesList.reduce((sum, r) => sum + Number(r.totalIssuedValue || 0), 0);
+    let totalTodayCollected = todaySalesList.reduce((sum, r) => sum + Number(r.handCash || 0), 0);
 
     // Update UI
     const targetEl = document.getElementById('metric-monthly-target');
@@ -329,7 +247,7 @@ async function updateDashboardCard() {
     if(todayColl) todayColl.innerText = formatCurrency(totalTodayCollected);
 
     if(currentUser && currentUser.role === 'admin') {
-        renderDistributorStats(targetSetting);
+        renderDistributorStats();
     }
     
     if(currentUser && currentUser.role === 'distributor') {
@@ -387,15 +305,14 @@ async function updateDashboardCard() {
     updateProductChart(monthSales);
     checkBackupReminder();
 }
-async function renderDistributorStats(settings) {
+async function renderDistributorStats() {
     const searchInput = document.getElementById('distributor-search');
     const query = searchInput ? searchInput.value.toLowerCase() : '';
     
-    let { data: list } = await _supabase.from('staff').select('*');
-    if(!list) return;
+    let list = await db.staff.toArray();
     
     if(query) {
-        list = list.filter(s => s.name.toLowerCase().includes(query) || (s.route_name && s.route_name.toLowerCase().includes(query)));
+        list = list.filter(s => s.name.toLowerCase().includes(query) || s.routeName.toLowerCase().includes(query));
     }
 
     const currentMonth = getCurrentMonthString();
@@ -410,33 +327,32 @@ async function renderDistributorStats(settings) {
     let html = '';
     
     for (const staff of list) {
-        const { data: sales } = await _supabase.from('daily_sales')
-            .select('*')
-            .eq('staff_id', staff.id)
-            .gte('date', currentMonth + '-01')
-            .lte('date', currentMonth + '-31');
+        const sales = await db.dailySales
+            .where('staffId').equals(staff.id)
+            .filter(r => r.date.startsWith(currentMonth))
+            .toArray();
 
         let totalS = 0;
         let totalC = 0;
-        (sales || []).forEach(r => {
-            const val = (Number(r.sold_card_48 || 0) * 48) + (Number(r.sold_card_95 || 0) * 95) + (Number(r.sold_card__96 || 0) * 96) + Number(r.sold_reload_cash || 0);
+        sales.forEach(r => {
+            const val = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96) + Number(r.soldReloadCash || 0);
             totalS += val;
-            totalC += Number(r.total_commission || 0);
+            totalC += Number(r.totalCommission || 0);
         });
 
         const target = staff.target || 0;
         const perc = target > 0 ? (totalS / target * 100) : 0;
         
         // Calculate dynamic daily target for this specific staff
-        const workedDays = new Set((sales || []).map(r => r.date)).size;
-        const totalWorkingDays = settings ? (settings.working_days || 25) : 25;
-        let daysLeft = totalWorkingDays - workedDays;
+        const workedDays = new Set(sales.map(r => r.date)).size;
+        const totalWokingDays = settings ? (settings.workingDays || 25) : 25;
+        let daysLeft = totalWokingDays - workedDays;
         if(daysLeft < 1) daysLeft = 1;
         const remainingTarget = (target - totalS) > 0 ? (target - totalS) : 0;
         const dynamicDayTarget = remainingTarget / daysLeft;
         
-        const lastRec = (sales || []).sort((a,b) => b.date.localeCompare(a.date))[0];
-        const sAmt = lastRec ? Number(lastRec.shortage_amt || 0) : 0;
+        const lastRec = sales.sort((a,b) => b.date.localeCompare(a.date))[0];
+        const sAmt = lastRec ? Number(lastRec.shortageAmt || 0) : 0;
         const bStatus = sAmt > 0.01 ? 'SHORT' : (sAmt < -0.01 ? 'EXCESS' : 'BALANCED');
         const bColor = bStatus === 'EXCESS' ? 'text-emerald-400' : (bStatus === 'SHORT' ? 'text-rose-400' : 'text-gray-500');
         const bLabel = bStatus === 'SHORT' ? `-${formatCurrency(Math.abs(sAmt))}` : (bStatus === 'EXCESS' ? `+${formatCurrency(Math.abs(sAmt))}` : 'BALANCED');
@@ -445,7 +361,7 @@ async function renderDistributorStats(settings) {
             <tr class="hover:bg-slate-800/30 transition-colors border-b border-slate-700/50 last:border-0">
                 <td class="py-4 px-6">
                     <div class="font-bold text-white text-sm">${staff.name}</div>
-                    <div class="text-[10px] text-gray-500 uppercase font-black">${staff.route_name}</div>
+                    <div class="text-[10px] text-gray-500 uppercase font-black">${staff.routeName}</div>
                 </td>
                 <td class="py-4 px-4 text-center">
                     <div class="text-[9px] text-indigo-400 font-black uppercase mb-1">Monthly</div>
@@ -651,14 +567,13 @@ async function handleIssueSubmit(e) {
     const totalIssuedValue = (n48 * 48) + (n95 * 95) + (n96 * 96) + nReload;
 
     try {
-        const { data: existing } = await _supabase.from('daily_issues').select('id').eq('date', date).eq('staff_id', staffId).limit(1).single();
-        
+        let existing = await db.dailyIssues.where({date: date, staffId: staffId}).first();
         const data = {
-            date, staff_id: staffId, 
-            card_48: t48, card_95: t95, card_96: t96, reload_cash: tReload,
-            new_c48: n48, new_c95: n95, new_c96: n96, new_reload: nReload,
-            prev_c48: p48, prev_c95: p95, prev_c96: p96, prev_reload: pReload,
-            total_issued_value: totalIssuedValue 
+            date, staffId, 
+            card48: t48, card95: t95, card96: t96, reloadCash: tReload,
+            newC48: n48, newC95: n95, newC96: n96, newReload: nReload,
+            prevC48: p48, prevC95: p95, prevC96: p96, prevReload: pReload,
+            totalIssuedValue 
         };
 
         if(existing) {
@@ -671,17 +586,16 @@ async function handleIssueSubmit(e) {
                 color: '#fff'
             });
             if(!res.isConfirmed) return;
-            await _supabase.from('daily_issues').update(data).eq('id', existing.id);
+            await db.dailyIssues.update(existing.id, data);
         } else {
-            await _supabase.from('daily_issues').insert([data]);
+            await db.dailyIssues.add(data);
         }
         
         showToast('Stock Issued Successfully');
         
         // Reset "New" fields
         ['issue-new-c48', 'issue-new-c95', 'issue-new-c96', 'issue-new-reload'].forEach(id => {
-            const el = document.getElementById(id);
-            if(el) el.value = 0;
+            document.getElementById(id).value = 0;
         });
 
         // For Admin: Reset staff selection and "Previous" fields
@@ -759,7 +673,7 @@ async function handleLoadExpectedData() {
     if(!staffId) return Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
 
     try {
-        let { data: issued } = await _supabase.from('daily_issues').select('*').eq('date', date).eq('staff_id', staffId).limit(1).single();
+        let issued = await db.dailyIssues.where({date, staffId}).first();
         if(!issued) {
             Swal.fire({ icon: 'info', title: 'No Issued Stock', text: 'No stock was issued to this staff on selected date.', background: '#1e293b', color: '#fff' });
             document.getElementById('collection-details').classList.add('hidden');
@@ -770,30 +684,28 @@ async function handleLoadExpectedData() {
         document.getElementById('collection-details').classList.remove('hidden');
         
         // Populate Availabilities (From setup)
-        document.getElementById('avail-c48').value = issued.card_48;
-        document.getElementById('avail-c95').value = issued.card_95;
-        document.getElementById('avail-c96').value = issued.card_96;
-        document.getElementById('avail-reload-disp').innerText = `Avail Reload: Rs. ${issued.reload_cash.toLocaleString()}`;
-        document.getElementById('avail-reload-val').value = issued.reload_cash;
+        document.getElementById('avail-c48').value = issued.card48;
+        document.getElementById('avail-c95').value = issued.card95;
+        document.getElementById('avail-c96').value = issued.card96;
+        document.getElementById('avail-reload-disp').innerText = `Avail Reload: Rs. ${issued.reloadCash.toLocaleString()}`;
+        document.getElementById('avail-reload-val').value = issued.reloadCash;
 
         // Reset fields
         ['sold-c48', 'sold-c95', 'sold-c96', 'sold-reload', 'collect-handcash'].forEach(id => document.getElementById(id).value = 0);
         
         // --- NEW: Load Previous Shortage ---
-        const { data: salesList } = await _supabase.from('daily_sales')
-            .select('*')
-            .eq('staff_id', staffId)
-            .lt('date', date)
-            .order('date', { ascending: false })
-            .limit(1);
-        
-        const lastSale = salesList && salesList[0];
+        const lastSale = await db.dailySales
+            .where('staffId').equals(staffId)
+            .and(r => r.date < date)
+            .reverse()
+            .sortBy('date')
+            .then(results => results[0]);
 
         previousShortage = 0;
         const pBadge = document.getElementById('prev-shortage-badge');
         
-        if(lastSale && lastSale.shortage_amt !== 0) {
-            previousShortage = lastSale.shortage_amt;
+        if(lastSale && lastSale.shortageAmt !== 0) {
+            previousShortage = lastSale.shortageAmt;
             if(previousShortage > 0) {
                 pBadge.innerText = `Prev Shortage: Rs. ${previousShortage}`;
                 pBadge.className = "mt-1 text-[9px] font-black uppercase text-red-500 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 block w-max";
@@ -807,13 +719,13 @@ async function handleLoadExpectedData() {
         }
         
         // Auto-load previously saved collection (for edit mode)
-        let { data: existingSale } = await _supabase.from('daily_sales').select('*').eq('date', date).eq('staff_id', staffId).limit(1).single();
+        let existingSale = await db.dailySales.where({date, staffId}).first();
         if(existingSale) {
-            document.getElementById('sold-c48').value = existingSale.sold_card_48 || 0;
-            document.getElementById('sold-c95').value = existingSale.sold_card_95 || 0;
-            document.getElementById('sold-c96').value = existingSale.sold_card__96 || 0;
-            document.getElementById('sold-reload').value = existingSale.sold_reload_cash || 0;
-            document.getElementById('collect-handcash').value = existingSale.hand_cash || 0;
+            document.getElementById('sold-c48').value = existingSale.soldCard48 || 0;
+            document.getElementById('sold-c95').value = existingSale.soldCard95 || 0;
+            document.getElementById('sold-c96').value = existingSale.soldCard96 || 0;
+            document.getElementById('sold-reload').value = existingSale.soldReloadCash || 0;
+            document.getElementById('collect-handcash').value = existingSale.handCash || 0;
             showToast('Loaded previously saved collection', 'info');
         }
         
@@ -930,9 +842,9 @@ async function handleCollectionSubmit(e) {
         if(!res.isConfirmed) return;
     }
 
-    if((soldCard48 > currentIssuedData.card_48) || 
-       (soldCard95 > currentIssuedData.card_95) || 
-       (soldCard96 > currentIssuedData.card_96)) {
+    if((soldCard48 > currentIssuedData.card48) || 
+       (soldCard95 > currentIssuedData.card95) || 
+       (soldCard96 > currentIssuedData.card96)) {
         
         let res = await Swal.fire({
             title: 'Invalid Stock Amount!',
@@ -945,23 +857,26 @@ async function handleCollectionSubmit(e) {
     }
 
     const shortageToday = totalWithDebt - handCash;
+    let diffStatus = 'BALANCED';
+    if (shortageToday > 0.01) diffStatus = 'SHORT';
+    else if (shortageToday < -0.01) diffStatus = 'EXCESS';
 
     const data = {
-        date, staff_id: staffId, 
-        sold_card_48: soldCard48, sold_card_95: soldCard95, sold_card__96: soldCard96, sold_reload_cash: soldReloadCash,
-        returned_card_48: returnedCard48, returned_card_95: returnedCard95, returned_card__96: returnedCard96,
-        hand_cash: handCash, 
-        total_commission: totalCommission,
-        shortage_amt: shortageToday
+        date, staffId, 
+        soldCard48, soldCard95, soldCard96, soldReloadCash,
+        returnedCard48, returnedCard95, returnedCard96,
+        handCash, expectedCash: todayExpected, // Record today's target
+        totalCommission,
+        availReload,
+        shortageAmt: shortageToday, // Positive for shortage, Negative for excess
+        currentDiff: Math.abs(shortageToday),
+        diffStatus: diffStatus
     };
 
     try {
-        const { data: existing } = await _supabase.from('daily_sales').select('id').eq('date', date).eq('staff_id', staffId).limit(1).single();
-        if(existing) { 
-            await _supabase.from('daily_sales').update(data).eq('id', existing.id); 
-        } else { 
-            await _supabase.from('daily_sales').insert([data]); 
-        }
+        let existing = await db.dailySales.where({date, staffId}).first();
+        if(existing) { await db.dailySales.update(existing.id, data); }
+        else { await db.dailySales.add(data); }
         
         Swal.fire({
             title: 'Success!',
@@ -980,7 +895,7 @@ async function handleCollectionSubmit(e) {
         currentIssuedData = null;
         previousShortage = 0;
 
-        await updateDashboardCard();
+        updateDashboardCard();
     } catch(err) {
         console.error(err);
         showToast('Error saving data', 'error');
@@ -1022,49 +937,52 @@ function setupEventListeners() {
         e.preventDefault();
         const id = document.getElementById('staff-edit-id').value;
         const name = document.getElementById('staff-name').value;
-        const route_name = document.getElementById('staff-route').value;
+        const routeName = document.getElementById('staff-route').value;
         const phone = document.getElementById('staff-phone').value;
         const password = document.getElementById('staff-password').value;
         const target = Number(document.getElementById('staff-target').value) || 0;
         
         if(id) {
             // Check if phone number is taken by ANOTHER staff member
-            let { data: conflict } = await _supabase.from('staff').select('id').eq('phone', phone).neq('id', id).limit(1).single();
+            let conflict = await db.staff
+                .where('phone').equals(phone)
+                .filter(s => s.id !== Number(id))
+                .first();
                 
             if(conflict) {
-                Swal.fire({ icon: 'error', title: 'Update Failed', text: `Phone number ${phone} is already assigned.`, background: '#1e293b', color: '#fff'});
+                Swal.fire({ icon: 'error', title: 'Update Failed', text: `Phone number ${phone} is already assigned to ${conflict.name}.`, background: '#1e293b', color: '#fff'});
                 return;
             }
 
-            await _supabase.from('staff').update({name, route_name, phone, password, target}).eq('id', id);
+            await db.staff.update(Number(id), {name, routeName, phone, password, target});
             showToast('Staff Updated');
             cancelStaffEdit();
         } else {
             // Check duplicate phone for NEW entry
-            let { data: exists } = await _supabase.from('staff').select('id').eq('phone', phone).limit(1).single();
+            let exists = await db.staff.where('phone').equals(phone).first();
             if(exists) {
-                Swal.fire({ icon: 'error', title: 'Duplicate Entry', text: `A staff member already exists with this phone.`, background: '#1e293b', color: '#fff'});
+                Swal.fire({ icon: 'error', title: 'Duplicate Entry', text: `A staff member (${exists.name}) already exists with this phone number.`, background: '#1e293b', color: '#fff'});
                 return;
             }
-            await _supabase.from('staff').insert([{name, route_name, phone, password, target}]);
+            await db.staff.add({name, routeName, phone, password, target});
             document.getElementById('staff-form').reset();
             showToast('Staff Added');
         }
-        await loadStaffDropdowns();
-        await renderStaffTable();
+        loadStaffDropdowns();
+        renderStaffTable();
     });
 
     document.getElementById('target-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const target_amount = Number(document.getElementById('setting-target').value);
-        const working_days = Number(document.getElementById('setting-days').value) || 25;
-        const admin_password = document.getElementById('setting-admin-pass').value || 'admin123';
+        const targetAmount = Number(document.getElementById('setting-target').value);
+        const workingDays = Number(document.getElementById('setting-days').value) || 25;
+        const adminPassword = document.getElementById('setting-admin-pass').value || 'admin123';
         
-        const { data: first } = await _supabase.from('settings').select('*').limit(1).single();
+        let first = await db.settings.toCollection().first();
         if(first) {
-            await _supabase.from('settings').update({target_amount, working_days, admin_password}).eq('id', first.id);
+            await db.settings.update(first.id, {targetAmount, workingDays, adminPassword});
         } else {
-            await _supabase.from('settings').insert([{target_amount, working_days, admin_password}]);
+            await db.settings.add({targetAmount, workingDays, adminPassword});
         }
         showToast('Settings Updated');
         updateDashboardCard();
@@ -1091,46 +1009,36 @@ function setupEventListeners() {
 
 // --- Additional Setup Data Refreshing ---
 async function loadStaffDropdowns() {
-    const { data: list } = await _supabase.from('staff').select('*');
-    if(!list) return;
-
+    const list = await db.staff.toArray();
     let issueDrop = document.getElementById('issue-staff');
     let collectDrop = document.getElementById('collect-staff');
     let reportDrop = document.getElementById('report-staff');
     
     // Clear existing
-    if(issueDrop) issueDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
-    if(collectDrop) collectDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
+    issueDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
+    collectDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
     if(reportDrop) reportDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
 
     list.forEach(s => {
-        if(issueDrop) issueDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.route_name}</option>`);
-        if(collectDrop) collectDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.route_name}</option>`);
-        if(reportDrop) reportDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.route_name}</option>`);
+        issueDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
+        collectDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
+        if(reportDrop) reportDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
     });
 
     // Also populate settings target if present
-    let { data: s } = await _supabase.from('settings').select('*').limit(1).single();
+    let s = await db.settings.toCollection().first();
     if(s) {
-        const elTarget = document.getElementById('setting-target');
-        const elDays = document.getElementById('setting-days');
-        const elPass = document.getElementById('setting-admin-pass');
-        if(elTarget) elTarget.value = s.target_amount || '';
-        if(elDays) elDays.value = s.working_days || 25;
-        if(elPass) elPass.value = s.admin_password || 'admin123';
+        document.getElementById('setting-target').value = s.targetAmount || '';
+        document.getElementById('setting-days').value = s.workingDays || 25;
+        document.getElementById('setting-admin-pass').value = s.adminPassword || 'admin123';
     }
 }
 
 async function renderStaffTable() {
-    const { data: list } = await _supabase.from('staff').select('*');
-    if(!list) return;
-
+    const list = await db.staff.toArray();
     const tbody = document.getElementById('staff-table-body');
-    const elCount = document.getElementById('staff-count');
-    if(elCount) elCount.innerText = list.length;
+    document.getElementById('staff-count').innerText = list.length;
     
-    if(!tbody) return;
-
     if(list.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-gray-500 italic">No staff registered yet. Add staff above.</td></tr>';
         return;
@@ -1145,7 +1053,7 @@ async function renderStaffTable() {
                     <div class="font-semibold text-white">${s.name}</div>
                     <div class="text-xs text-gray-500">${s.phone}</div>
                 </td>
-                <td class="py-3 px-4 text-gray-400">${s.route_name || ''}</td>
+                <td class="py-3 px-4 text-gray-400">${s.routeName}</td>
                 <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(s.target || 0)}</td>
                 <td class="py-3 px-4 text-right">
                     <button onclick="editStaff(${s.id})" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
@@ -1179,64 +1087,49 @@ async function loadPreviousBalances() {
     calculateIssueTotal();
 
     if(!staffId || !selectedDate) {
-        if(!staffId) await updateStaffPerformanceDisplay("");
+        if(!staffId) updateStaffPerformanceDisplay("");
         return;
     }
 
     // Find the last SALES record (Evening collection) BEFORE the selected date
-    const { data: salesList } = await _supabase.from('daily_sales')
-        .select('*')
-        .eq('staff_id', staffId)
-        .lt('date', selectedDate)
-        .order('date', { ascending: false })
-        .limit(1);
-    
-    const lastSale = salesList && salesList[0];
+    // Note: We rollover the RETURNED items from the last settlement.
+    const lastSale = await db.dailySales
+        .where('staffId').equals(staffId)
+        .and(r => r.date < selectedDate)
+        .reverse()
+        .sortBy('date')
+        .then(results => results[0]);
 
     if (lastSale) {
-        document.getElementById('issue-prev-c48').value = lastSale.returned_card_48 || 0;
-        document.getElementById('issue-prev-c95').value = lastSale.returned_card_95 || 0;
-        document.getElementById('issue-prev-c96').value = lastSale.returned_card__96 || 0;
-        
-        // Rollover reload calculation (avail - sold)
-        // Since availReload was saved, we use it.
-        const prevReloadFull = lastSale.avail_reload || 0;
-        const prevSoldReload = lastSale.sold_reload_cash || 0;
-        document.getElementById('issue-prev-reload').value = (prevReloadFull - prevSoldReload) || 0;
+        document.getElementById('issue-prev-c48').value = lastSale.returnedCard48 || 0;
+        document.getElementById('issue-prev-c95').value = lastSale.returnedCard95 || 0;
+        document.getElementById('issue-prev-c96').value = lastSale.returnedCard96 || 0;
+        document.getElementById('issue-prev-reload').value = (lastSale.availReload - lastSale.soldReloadCash) || 0;
         
         // --- NEW: Display Shortage/Excess in Issue Page ---
         const cashWrap = document.getElementById('issue-prev-cash-wrap');
         const cashLabel = document.getElementById('issue-prev-cash-label');
         const cashValue = document.getElementById('issue-prev-cash-val');
         
-        if(lastSale.shortage_amt && lastSale.shortage_amt !== 0) {
-            if(cashWrap) cashWrap.classList.remove('hidden');
-            if(lastSale.shortage_amt > 0) {
-                if(cashLabel) {
-                    cashLabel.innerText = "Unpaid Shortage";
-                    cashLabel.classList.replace('text-emerald-400', 'text-red-400');
-                }
-                if(cashValue) {
-                    cashValue.innerText = `Rs. ${lastSale.shortage_amt}`;
-                    cashValue.className = "text-base font-black text-red-500";
-                }
+        if(lastSale.shortageAmt && lastSale.shortageAmt !== 0) {
+            cashWrap.classList.remove('hidden');
+            if(lastSale.shortageAmt > 0) {
+                cashLabel.innerText = "Unpaid Shortage";
+                cashLabel.classList.replace('text-emerald-400', 'text-red-400');
+                cashValue.innerText = `Rs. ${lastSale.shortageAmt}`;
+                cashValue.className = "text-base font-black text-red-500";
             } else {
-                if(cashLabel) {
-                    cashLabel.innerText = "Excess Credit";
-                    cashLabel.classList.replace('text-red-400', 'text-emerald-400');
-                }
-                if(cashValue) {
-                    cashValue.innerText = `Rs. ${Math.abs(lastSale.shortage_amt)}`;
-                    cashValue.className = "text-base font-black text-emerald-400";
-                }
+                cashLabel.innerText = "Excess Credit";
+                cashLabel.classList.replace('text-red-400', 'text-emerald-400');
+                cashValue.innerText = `Rs. ${Math.abs(lastSale.shortageAmt)}`;
+                cashValue.className = "text-base font-black text-emerald-400";
             }
         } else {
-            if(cashWrap) cashWrap.classList.add('hidden');
+            cashWrap.classList.add('hidden');
         }
 
     } else {
-        const cw = document.getElementById('issue-prev-cash-wrap');
-        if(cw) cw.classList.add('hidden');
+        document.getElementById('issue-prev-cash-wrap').classList.add('hidden');
     }
 
     calculateIssueTotal();
@@ -1246,21 +1139,17 @@ async function loadPreviousBalances() {
 window.deleteStaff = async function(id) {
     let res = await Swal.fire({
         title: 'Delete Staff?',
-        text: 'This will not delete past records, but removes staff from the list.',
+        text: 'This will not delete past records, but removes them from lists.',
         icon: 'warning',
         showCancelButton: true,
         background: '#1e293b',
         color: '#fff'
     });
     if(res.isConfirmed) {
-        const { error } = await _supabase.from('staff').delete().eq('id', id);
-        if(error) {
-             Swal.fire({ icon: 'error', title: 'Error', text: 'Cannot delete staff with existing records.', background: '#1e293b', color: '#fff'});
-        } else {
-            showToast('Deleted');
-            await loadStaffDropdowns();
-            await renderStaffTable();
-        }
+        await db.staff.delete(id);
+        showToast('Deleted');
+        loadStaffDropdowns();
+        renderStaffTable();
     }
 }
 window.switchTab = switchTab;
@@ -1279,11 +1168,11 @@ window.cancelStaffEdit = function() {
 }
 
 window.editStaff = async function(id) {
-    const { data: s } = await _supabase.from('staff').select('*').eq('id', id).single();
+    const s = await db.staff.get(id);
     if(s) {
         document.getElementById('staff-edit-id').value = s.id;
         document.getElementById('staff-name').value = s.name;
-        document.getElementById('staff-route').value = s.route_name || '';
+        document.getElementById('staff-route').value = s.routeName;
         document.getElementById('staff-phone').value = s.phone;
         document.getElementById('staff-password').value = s.password || '';
         document.getElementById('staff-target').value = s.target || '';
@@ -1302,7 +1191,153 @@ window.editStaff = async function(id) {
 
 // --- Data Management (Backup, Restore, Reset) ---
 
-// Migration Complete: Old reset and restore logic removed.
+window.backupData = async function() {
+    try {
+        const data = {
+            settings: await db.settings.toArray(),
+            staff: await db.staff.toArray(),
+            dailyIssues: await db.dailyIssues.toArray(),
+            dailySales: await db.dailySales.toArray(),
+            timestamp: new Date().toISOString()
+        };
+
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `crdms_backup_${getTodayString()}.json`;
+        a.click();
+        
+        URL.revokeObjectURL(url);
+        
+        // Update last backup date in settings
+        const currentSettings = await db.settings.toCollection().first();
+        if(currentSettings) {
+            await db.settings.update(currentSettings.id, { lastBackupDate: Date.now() });
+        } else {
+            await db.settings.add({ lastBackupDate: Date.now() });
+        }
+
+        showToast('Backup Downloaded successfully!');
+        checkBackupReminder();
+    } catch (error) {
+        console.error(error);
+        showToast('Backup Failed', 'error');
+    }
+}
+
+window.handleRestoreFile = async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    let res = await Swal.fire({
+        title: 'Restore Backup?',
+        text: 'This will erase existing data and restore from the file. Are you sure?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Yes, Restore it',
+        background: '#1e293b', 
+        color: '#fff'
+    });
+
+    if (!res.isConfirmed) {
+        event.target.value = ""; // Reset input
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            
+            if(!data.staff || !data.dailyIssues) {
+                Swal.fire({ icon: 'error', title: 'Invalid Backup File', text: 'Data structure is not recognized.', background: '#1e293b', color: '#fff'});
+                return;
+            }
+
+            // Wipe existing data and Insert new data
+            await db.transaction('rw', db.settings, db.staff, db.dailyIssues, db.dailySales, async () => {
+                await db.settings.clear();
+                await db.staff.clear();
+                await db.dailyIssues.clear();
+                await db.dailySales.clear();
+
+                if(data.settings && data.settings.length > 0) await db.settings.bulkAdd(data.settings);
+                if(data.staff && data.staff.length > 0) await db.staff.bulkAdd(data.staff);
+                if(data.dailyIssues && data.dailyIssues.length > 0) await db.dailyIssues.bulkAdd(data.dailyIssues);
+                if(data.dailySales && data.dailySales.length > 0) await db.dailySales.bulkAdd(data.dailySales);
+            });
+
+            await Swal.fire({ icon: 'success', title: 'Restore Complete!', text: 'Your data has been successfully imported.', background: '#1e293b', color: '#fff'});
+            
+            // Reload UI
+            window.location.reload();
+            
+        } catch (error) {
+            console.error(error);
+            Swal.fire({ icon: 'error', title: 'Restore Failed', text: error.message, background: '#1e293b', color: '#fff'});
+        } finally {
+            event.target.value = ""; // Reset input
+        }
+    };
+    reader.readAsText(file);
+}
+
+window.resetSystem = async function() {
+    let res = await Swal.fire({
+        title: 'Are you absolutely sure?',
+        text: 'This will wipe ALL sales, issues, staff, and targets FOREVER. You cannot undo this!',
+        icon: 'error',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Yes, Wipe Everything!',
+        background: '#1e293b', 
+        color: '#fff'
+    });
+
+    if (res.isConfirmed) {
+        let secondRes = await Swal.fire({
+            title: 'Final Confirmation',
+            text: 'Type "RESET" to confirm data deletion:',
+            input: 'text',
+            inputPlaceholder: 'Type RESET',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            background: '#1e293b', 
+            color: '#fff',
+            preConfirm: (val) => {
+                if(val !== 'RESET') {
+                    Swal.showValidationMessage('You must type RESET exactly');
+                }
+            }
+        });
+
+        if (secondRes.isConfirmed) {
+            try {
+                await db.transaction('rw', db.settings, db.staff, db.dailyIssues, db.dailySales, async () => {
+                    await db.settings.clear();
+                    await db.staff.clear();
+                    await db.dailyIssues.clear();
+                    await db.dailySales.clear();
+                });
+                
+                if (typeof currentIssuedData !== 'undefined') {
+                    currentIssuedData = null; // Clear context buffer too if it's there
+                }
+                
+                await Swal.fire({ icon: 'success', title: 'System Reset', text: 'All data has been wiped.', background: '#1e293b', color: '#fff', timer: 2000, showConfirmButton:false });
+                window.location.reload();
+            } catch(error) {
+                Swal.fire({ icon: 'error', title: 'Reset Failed', text: error.message, background: '#1e293b', color: '#fff'});
+            }
+        }
+    }
+}
 // --- Report Logic ---
 window.toggleReportStaffPicker = function() {
     const scope = document.getElementById('report-scope').value;
@@ -1324,47 +1359,45 @@ window.generateReport = async function() {
     const titleMeta = document.getElementById('report-title-meta');
     const printDate = document.getElementById('report-print-date');
 
-    if(printableArea) printableArea.classList.remove('hidden');
-    const printBtn = document.getElementById('btn-print-report');
-    if(printBtn) printBtn.classList.remove('hidden');
-    if(printDate) printDate.innerText = new Date().toLocaleString();
+    printableArea.classList.remove('hidden');
+    document.getElementById('btn-print-report').classList.remove('hidden');
+    printDate.innerText = new Date().toLocaleString();
 
     if(scope === 'all') {
-        if(titleMeta) titleMeta.innerText = `Full Staff Monthly Summary - ${monthStr}`;
+        titleMeta.innerText = `Full Staff Monthly Summary - ${monthStr}`;
         await renderFullStaffSummary(monthStr, content);
     } else {
-        const { data: staff } = await _supabase.from('staff').select('*').eq('id', staffId).single();
-        if(titleMeta) titleMeta.innerText = `Distributor History: ${staff.name} (${staff.route_name}) - ${monthStr}`;
+        const staff = await db.staff.get(staffId);
+        titleMeta.innerText = `Distributor History: ${staff.name} (${staff.routeName}) - ${monthStr}`;
         await renderSingleStaffHistory(monthStr, staffId, content);
     }
     
-    if(printableArea) printableArea.scrollIntoView({ behavior: 'smooth' });
+    // Smooth scroll to report
+    printableArea.scrollIntoView({ behavior: 'smooth' });
 }
 
 async function renderFullStaffSummary(monthStr, container) {
-    const { data: staffs } = await _supabase.from('staff').select('*');
-    if(!staffs) return;
-
+    const staffs = await db.staff.toArray();
+    
     // Pre-calculate data for ranking
     const staffData = [];
     for (const s of staffs) {
-        const { data: salesRecords } = await _supabase.from('daily_sales')
-            .select('*')
-            .eq('staff_id', s.id)
-            .gte('date', monthStr + '-01')
-            .lte('date', monthStr + '-31');
+        const salesRecords = await db.dailySales
+            .where('staffId').equals(s.id)
+            .filter(r => r.date.startsWith(monthStr))
+            .toArray();
 
         let totalS = 0;
         let totalC = 0;
-        (salesRecords || []).forEach(r => {
-            totalS += (Number(r.sold_card_48 || 0) * 48) + (Number(r.sold_card_95 || 0) * 95) + (Number(r.sold_card__96 || 0) * 96) + Number(r.sold_reload_cash || 0);
-            totalC += Number(r.total_commission || 0);
+        salesRecords.forEach(r => {
+            totalS += (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96) + Number(r.soldReloadCash || 0);
+            totalC += Number(r.totalCommission || 0);
         });
 
         const progress = (s.target || 0) > 0 ? (totalS / s.target * 100) : 0;
         
-        const lastRec = (salesRecords || []).sort((a,b) => b.date.localeCompare(a.date))[0];
-        const sAmt = lastRec ? Number(lastRec.shortage_amt || 0) : 0;
+        const lastRec = salesRecords.sort((a,b) => b.date.localeCompare(a.date))[0];
+        const sAmt = lastRec ? Number(lastRec.shortageAmt || 0) : 0;
         const diffAmt = Math.abs(sAmt);
         const status = sAmt > 0.01 ? 'SHORT' : (sAmt < -0.01 ? 'EXCESS' : 'BALANCED');
 
@@ -1417,7 +1450,7 @@ async function renderFullStaffSummary(monthStr, container) {
                 <td class="py-3 px-2 text-center ${rankClass}">${index + 1}</td>
                 <td class="py-3 px-4">
                     <div class="font-bold text-indigo-900">${s.name}</div>
-                    <div class="text-[10px] text-slate-500 uppercase font-black tracking-tighter">${s.route_name || ''}</div>
+                    <div class="text-[10px] text-slate-500 uppercase font-black tracking-tighter">${s.routeName}</div>
                 </td>
                 <td class="py-3 px-2 text-center font-mono">${formatCurrency(s.target || 0)}</td>
                 <td class="py-3 px-2 text-center font-bold font-mono">${formatCurrency(data.totalS)}</td>
@@ -1438,35 +1471,31 @@ async function renderFullStaffSummary(monthStr, container) {
             </tfoot>
         </table>
     `;
-    if(container) container.innerHTML = html;
+    container.innerHTML = html;
 }
 
 async function renderSingleStaffHistory(monthStr, staffId, container) {
-    const { data: records } = await _supabase.from('daily_sales')
-        .select('*')
-        .eq('staff_id', staffId)
-        .gte('date', monthStr + '-01')
-        .lte('date', monthStr + '-31');
-
-    if(!records) return;
+    const records = await db.dailySales
+        .where('staffId').equals(staffId)
+        .filter(r => r.date.startsWith(monthStr))
+        .toArray();
 
     // PERFORMANCE SUMMARY LOGIC
     let totalSales = 0, totalCardsVal = 0, totalReloadVal = 0, totalComm = 0;
     let bestDay = { val: 0, date: 'N/A' };
     
     records.forEach(r => {
-        const cVal = (Number(r.sold_card_48 || 0) * 48) + (Number(r.sold_card_95 || 0) * 95) + (Number(r.sold_card__96 || 0) * 96);
-        const dayTotal = cVal + Number(r.sold_reload_cash || 0);
+        const cVal = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96);
+        const dayTotal = cVal + Number(r.soldReloadCash || 0);
         totalSales += dayTotal;
         totalCardsVal += cVal;
-        totalReloadVal += Number(r.sold_reload_cash || 0);
-        totalComm += Number(r.total_commission || 0);
+        totalReloadVal += Number(r.soldReloadCash || 0);
+        totalComm += Number(r.totalCommission || 0);
         if(dayTotal > bestDay.val) { bestDay = { val: dayTotal, date: r.date }; }
     });
 
     const avgDaily = records.length > 0 ? (totalSales / records.length) : 0;
-    const { data: staff } = await _supabase.from('staff').select('*').eq('id', staffId).single();
-    if(!staff) return;
+    const staff = await db.staff.get(staffId);
     const progress = (staff.target || 0) > 0 ? (totalSales / staff.target * 100) : 0;
 
     let html = `
@@ -1508,15 +1537,15 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
     let tCardsValue = 0, tSales = 0, tReload = 0, tCash = 0;
 
     records.sort((a,b) => a.date.localeCompare(b.date)).forEach(r => {
-        const cardsValue = (Number(r.sold_card_48 || 0) * 48) + (Number(r.sold_card_95 || 0) * 95) + (Number(r.sold_card__96 || 0) * 96);
-        const dayTotalSales = cardsValue + Number(r.sold_reload_cash || 0);
+        const cardsValue = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96);
+        const dayTotalSales = cardsValue + Number(r.soldReloadCash || 0);
 
         tCardsValue += cardsValue;
-        tReload += Number(r.sold_reload_cash || 0);
+        tReload += Number(r.soldReloadCash || 0);
         tSales += dayTotalSales;
-        tCash += Number(r.hand_cash || 0);
+        tCash += Number(r.handCash || 0);
 
-        const sAmt = Number(r.shortage_amt || 0);
+        const sAmt = Number(r.shortageAmt || 0);
         const diffAmt = Math.abs(sAmt);
         const status = sAmt > 0.01 ? 'SHORT' : (sAmt < -0.01 ? 'EXCESS' : 'BALANCED');
         
@@ -1527,9 +1556,9 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
             <tr class="border-b border-slate-100 hover:bg-indigo-50/20">
                 <td class="py-2 px-2 font-bold">${r.date}</td>
                 <td class="py-2 px-2 text-center font-mono">${formatCurrency(cardsValue)}</td>
-                <td class="py-2 px-2 text-center font-mono">${formatCurrency(r.sold_reload_cash)}</td>
+                <td class="py-2 px-2 text-center font-mono">${formatCurrency(r.soldReloadCash)}</td>
                 <td class="py-2 px-2 text-center font-bold text-indigo-700 font-mono">${formatCurrency(dayTotalSales)}</td>
-                <td class="py-2 px-2 text-center font-bold font-mono">${formatCurrency(r.hand_cash)}</td>
+                <td class="py-2 px-2 text-center font-bold font-mono">${formatCurrency(r.handCash)}</td>
                 <td class="py-2 px-2 text-right ${colorClass} font-black text-[9px] uppercase">${shortLabel}</td>
             </tr>
         `;
@@ -1549,7 +1578,7 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
             </tfoot>
         </table>
     `;
-    if(container) container.innerHTML = html;
+    container.innerHTML = html;
 }
 
 async function updateStaffPerformanceDisplay(staffId) {
@@ -1560,27 +1589,26 @@ async function updateStaffPerformanceDisplay(staffId) {
     }
 
     try {
-        const { data: staff } = await _supabase.from('staff').select('*').eq('id', staffId).single();
+        const staff = await db.staff.get(Number(staffId));
         if(!staff) return;
 
         const currentMonth = getCurrentMonthString();
-        const { data: sales } = await _supabase.from('daily_sales')
-            .select('*')
-            .eq('staff_id', staffId)
-            .gte('date', currentMonth + '-01')
-            .lte('date', currentMonth + '-31');
+        const sales = await db.dailySales
+            .where('staffId').equals(Number(staffId))
+            .filter(r => r.date.startsWith(currentMonth))
+            .toArray();
 
-        const monthAchieved = (sales || []).reduce((sum, r) => {
-            const cardVal = (Number(r.sold_card_48 || 0) * 48) + (Number(r.sold_card_95 || 0) * 95) + (Number(r.sold_card__96 || 0) * 96);
-            return sum + cardVal + Number(r.sold_reload_cash || 0);
+        const monthAchieved = sales.reduce((sum, r) => {
+            const cardVal = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96);
+            return sum + cardVal + Number(r.soldReloadCash || 0);
         }, 0);
 
-        const { data: settings } = await _supabase.from('settings').select('*').limit(1).single();
-        const workingDays = settings ? (settings.working_days || 25) : 25;
+        const settings = await db.settings.toCollection().first();
+        const workingDays = settings ? (settings.workingDays || 25) : 25;
         const monthlyTarget = staff.target || 0;
         
         // Dynamic day target calculation
-        const workedDays = new Set((sales || []).map(r => r.date)).size;
+        const workedDays = new Set(sales.map(r => r.date)).size;
         let daysLeft = workingDays - workedDays;
         if(daysLeft < 1) daysLeft = 1;
 
@@ -1612,10 +1640,10 @@ async function updateProductChart(monthSales) {
     let tot48 = 0, tot95 = 0, tot96 = 0, totReload = 0;
     
     monthSales.forEach(r => {
-        tot48 += (Number(r.sold_card_48 || 0) * 48);
-        tot95 += (Number(r.sold_card_95 || 0) * 95);
-        tot96 += (Number(r.sold_card__96 || 0) * 96);
-        totReload += Number(r.sold_reload_cash || 0);
+        tot48 += (Number(r.soldCard48 || 0) * 48);
+        tot95 += (Number(r.soldCard95 || 0) * 95);
+        tot96 += (Number(r.soldCard96 || 0) * 96);
+        totReload += Number(r.soldReloadCash || 0);
     });
 
     const data = [tot48, tot95, tot96, totReload];
@@ -1650,17 +1678,20 @@ async function updateProductChart(monthSales) {
 }
 
 async function checkBackupReminder() {
-    // With Supabase, backups are handled by the cloud provider.
-    // However, we can use this to remind users about something else or just keep it minimal.
-    const { data: s } = await _supabase.from('settings').select('*').limit(1).single();
-    if(!s) return;
+    const settings = await db.settings.toCollection().first();
+    const lastBackup = settings ? settings.lastBackupDate : 0;
+    const now = Date.now();
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
 
     const backupBtn = document.getElementById('btn-global-backup');
     if (!backupBtn) return;
-    
-    // We could hide it or repurpose it as a "Refresh" button.
-    backupBtn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Data Sync';
-    backupBtn.onclick = () => window.location.reload();
+
+    if (!lastBackup || (now - lastBackup) > sevenDays) {
+        backupBtn.classList.add('animate-pulse', 'border-rose-500', 'text-rose-400', 'bg-rose-500/10');
+        backupBtn.title = "Backup Recommended! (Over 7 days since last backup)";
+    } else {
+        backupBtn.classList.remove('animate-pulse', 'border-rose-500', 'text-rose-400', 'bg-rose-500/10');
+    }
 }
 
 // End of Report Logic
