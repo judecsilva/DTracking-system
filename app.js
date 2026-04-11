@@ -36,6 +36,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     if(currentUser) {
         pullFromCloud();
     }
+
+    // --- Automatic Sync Triggers ---
+    window.addEventListener('online', () => {
+        console.log("Internet restored. Syncing...");
+        pullFromCloud();
+    });
+
+    // Sync when user comes back to the app tab (optional but recommended)
+    window.addEventListener('focus', () => {
+        if(currentUser) pullFromCloud();
+    });
 });
 
 function showLogin() {
