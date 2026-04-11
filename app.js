@@ -1849,14 +1849,21 @@ async function manualCloudSync() {
 }
 
 async function pullFromCloud() {
-    if (typeof supabaseClient === 'undefined') return;
+    if (typeof supabaseClient === 'undefined') {
+        alert("ERROR: Supabase is NOT Connected! Sync disabled.");
+        return;
+    }
     
     console.log("Starting cloud data pull...");
-    
+    alert("Attempting Sync... (Cloud to Local)");
+
     try {
         // 1. Pull Settings
+        alert("Pulling Settings...");
         const { data: sData, error: sErr } = await supabaseClient.from('settings').select('*');
-        if(!sErr && sData && sData.length > 0) {
+        if(sErr) throw sErr;
+        
+        if(sData && sData.length > 0) {
             await db.settings.clear();
             await db.settings.bulkAdd(sData.map(s => ({
                 id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
@@ -1865,17 +1872,22 @@ async function pullFromCloud() {
         }
 
         // 2. Pull Staff
+        alert("Pulling Staff List...");
         const { data: staffData, error: staffErr } = await supabaseClient.from('staff').select('*');
-        if(!staffErr && staffData) {
+        if(staffErr) throw staffErr;
+        if(staffData) {
             await db.staff.clear();
             await db.staff.bulkAdd(staffData.map(s => ({
                 id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target)
             })));
         }
 
-        // 3. Pull Issues
-        const { data: issueData, error: issueErr } = await supabaseClient.from('daily_issues').select('*');
-        if(!issueErr && issueData) {
+        // 3. Pull Issues & Sales
+        alert("Pulling Daily Records...");
+        const { data: issueData } = await supabaseClient.from('daily_issues').select('*');
+        const { data: salesData } = await supabaseClient.from('daily_sales').select('*');
+
+        if(issueData) {
             await db.dailyIssues.clear();
             await db.dailyIssues.bulkAdd(issueData.map(r => ({
                 id: r.id, staffId: r.staff_id, date: r.date, 
@@ -1884,9 +1896,7 @@ async function pullFromCloud() {
             })));
         }
 
-        // 4. Pull Sales
-        const { data: salesData, error: salesErr } = await supabaseClient.from('daily_sales').select('*');
-        if(!salesErr && salesData) {
+        if(salesData) {
             await db.dailySales.clear();
             await db.dailySales.bulkAdd(salesData.map(r => ({
                 id: r.id, staffId: r.staff_id, date: r.date, 
@@ -1896,6 +1906,7 @@ async function pullFromCloud() {
             })));
         }
 
+        alert("SYNC SUCCESSFUL!");
         console.log("Cloud Pull Complete");
         
         // Refresh UI
@@ -1904,6 +1915,7 @@ async function pullFromCloud() {
         renderStaffTable();
 
     } catch (err) {
+        alert("SYNC FAILED: " + err.message);
         console.warn("Pull failed:", err.message);
     }
 }
