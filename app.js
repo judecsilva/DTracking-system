@@ -31,6 +31,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Event Listeners
     setupEventListeners();
+
+    // --- Pull data from Cloud on startup ---
+    if(currentUser) {
+        pullFromCloud();
+    }
 });
 
 function showLogin() {
@@ -61,12 +66,13 @@ async function showApp() {
             const issueStaff = document.getElementById('issue-staff');
             const collectStaff = document.getElementById('collect-staff');
             if(issueStaff && collectStaff) {
-                issueStaff.value = currentUser.id;
-                collectStaff.value = currentUser.id;
+                const sId = currentUser.id;
+                issueStaff.value = sId;
+                collectStaff.value = sId;
                 issueStaff.disabled = true;
                 collectStaff.disabled = true;
                 loadPreviousBalances(); 
-                updateStaffPerformanceDisplay(currentUser.id);
+                updateStaffPerformanceDisplay(sId);
             }
         };
         setTimeout(autoEnforceSelf, 400); 
@@ -545,7 +551,7 @@ function calculateIssueTotal() {
 async function handleIssueSubmit(e) {
     e.preventDefault();
     const date = document.getElementById('issue-date').value;
-    const staffId = Number(document.getElementById('issue-staff').value);
+    const staffId = document.getElementById('issue-staff').value;
     
     if(!staffId) {
         Swal.fire({ icon: 'warning', title: 'Oops', text: 'Please select a staff member', background: '#1e293b', color: '#fff'});
@@ -825,7 +831,7 @@ async function handleCollectionSubmit(e) {
     if(!currentIssuedData) return;
 
     const date = document.getElementById('collect-date').value;
-    const staffId = Number(document.getElementById('collect-staff').value);
+    const staffId = document.getElementById('collect-staff').value;
     
     const soldCard48 = Number(document.getElementById('sold-c48').value) || 0;
     const soldCard95 = Number(document.getElementById('sold-c95').value) || 0;
@@ -975,7 +981,7 @@ function setupEventListeners() {
             // Check if phone number is taken by ANOTHER staff member
             let conflict = await db.staff
                 .where('phone').equals(phone)
-                .filter(s => s.id !== Number(id))
+                .filter(s => s.id !== id)
                 .first();
                 
             if(conflict) {
@@ -983,7 +989,7 @@ function setupEventListeners() {
                 return;
             }
 
-            await db.staff.update(Number(id), {name, routeName, phone, password, target});
+            await db.staff.update(id, {name, routeName, phone, password, target});
             showToast('Staff Updated');
             cancelStaffEdit();
         } else {
@@ -1119,7 +1125,7 @@ async function renderStaffTable() {
 }
 
 async function loadPreviousBalances() {
-    const staffId = Number(document.getElementById('issue-staff').value);
+    const staffId = document.getElementById('issue-staff').value;
     const selectedDate = document.getElementById('issue-date').value;
     
     // 1. Always reset "New" fields FIRST
@@ -1639,12 +1645,12 @@ async function updateStaffPerformanceDisplay(staffId) {
     }
 
     try {
-        const staff = await db.staff.get(Number(staffId));
+        const staff = await db.staff.get(staffId);
         if(!staff) return;
 
         const currentMonth = getCurrentMonthString();
         const sales = await db.dailySales
-            .where('staffId').equals(Number(staffId))
+            .where('staffId').equals(staffId)
             .filter(r => r.date.startsWith(currentMonth))
             .toArray();
 
@@ -1826,3 +1832,62 @@ async function manualCloudSync() {
     }
 }
 
+async function pullFromCloud() {
+    if (typeof supabaseClient === 'undefined') return;
+    
+    console.log("Starting cloud data pull...");
+    
+    try {
+        // 1. Pull Settings
+        const { data: sData, error: sErr } = await supabaseClient.from('settings').select('*');
+        if(!sErr && sData && sData.length > 0) {
+            await db.settings.clear();
+            await db.settings.bulkAdd(sData.map(s => ({
+                id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
+                adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
+            })));
+        }
+
+        // 2. Pull Staff
+        const { data: staffData, error: staffErr } = await supabaseClient.from('staff').select('*');
+        if(!staffErr && staffData) {
+            await db.staff.clear();
+            await db.staff.bulkAdd(staffData.map(s => ({
+                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target)
+            })));
+        }
+
+        // 3. Pull Issues
+        const { data: issueData, error: issueErr } = await supabaseClient.from('daily_issues').select('*');
+        if(!issueErr && issueData) {
+            await db.dailyIssues.clear();
+            await db.dailyIssues.bulkAdd(issueData.map(r => ({
+                id: r.id, staffId: r.staff_id, date: r.date, 
+                card48: r.card48, card95: r.card95, card96: r.card96, 
+                reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value)
+            })));
+        }
+
+        // 4. Pull Sales
+        const { data: salesData, error: salesErr } = await supabaseClient.from('daily_sales').select('*');
+        if(!salesErr && salesData) {
+            await db.dailySales.clear();
+            await db.dailySales.bulkAdd(salesData.map(r => ({
+                id: r.id, staffId: r.staff_id, date: r.date, 
+                soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
+                soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
+                totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt)
+            })));
+        }
+
+        console.log("Cloud Pull Complete");
+        
+        // Refresh UI
+        updateDashboardCard();
+        loadStaffDropdowns();
+        renderStaffTable();
+
+    } catch (err) {
+        console.warn("Pull failed:", err.message);
+    }
+}
