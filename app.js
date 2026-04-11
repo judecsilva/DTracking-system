@@ -1850,16 +1850,13 @@ async function manualCloudSync() {
 
 async function pullFromCloud() {
     if (typeof supabaseClient === 'undefined') {
-        alert("ERROR: Supabase is NOT Connected! Sync disabled.");
         return;
     }
     
     console.log("Starting cloud data pull...");
-    alert("Attempting Sync... (Cloud to Local)");
 
     try {
         // 1. Pull Settings
-        alert("Pulling Settings...");
         const { data: sData, error: sErr } = await supabaseClient.from('settings').select('*');
         if(sErr) throw sErr;
         
@@ -1872,18 +1869,16 @@ async function pullFromCloud() {
         }
 
         // 2. Pull Staff
-        alert("Pulling Staff List...");
         const { data: staffData, error: staffErr } = await supabaseClient.from('staff').select('*');
         if(staffErr) throw staffErr;
         if(staffData) {
             await db.staff.clear();
             await db.staff.bulkAdd(staffData.map(s => ({
-                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target)
+                id: s.id, name: s.name, routeName: s.routeName, phone: s.phone, password: s.password, target: Number(s.target)
             })));
         }
 
-        // 3. Pull Issues & Sales
-        alert("Pulling Daily Records...");
+        // 3. Pull Daily Records
         const { data: issueData } = await supabaseClient.from('daily_issues').select('*');
         const { data: salesData } = await supabaseClient.from('daily_sales').select('*');
 
@@ -1906,7 +1901,6 @@ async function pullFromCloud() {
             })));
         }
 
-        alert("SYNC SUCCESSFUL!");
         console.log("Cloud Pull Complete");
         
         // Refresh UI
@@ -1915,7 +1909,6 @@ async function pullFromCloud() {
         renderStaffTable();
 
     } catch (err) {
-        alert("SYNC FAILED: " + err.message);
         console.warn("Pull failed:", err.message);
     }
 }
