@@ -1752,25 +1752,41 @@ async function checkBackupReminder() {
 
 // --- Online Sync Helper ---
 async function syncToCloud(table, data, matchFields) {
-    if (typeof supabaseClient === 'undefined') return;
+    if (typeof supabaseClient === 'undefined') {
+        console.error("Supabase client missing during sync");
+        return;
+    }
     
     try {
-        const { data: existing, error: checkError } = await supabaseClient
+        const { error } = await supabaseClient
             .from(table)
-            .select('*')
-            .match(matchFields)
-            .maybeSingle();
+            .upsert(data, { onConflict: Object.keys(matchFields).join(',') });
 
-        if (checkError) throw checkError;
-
-        if (existing) {
-            await supabaseClient.from(table).update(data).match(matchFields);
-        } else {
-            await supabaseClient.from(table).insert([data]);
-        }
+        if (error) throw error;
+        
         console.log(`Synced ${table} to cloud`);
+        // Small silent toast for auto-sync
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'bottom-end',
+            showConfirmButton: false,
+            timer: 2000,
+            background: '#10b981',
+            color: '#fff'
+        });
+        Toast.fire({ icon: 'success', title: 'Saved Online' });
+
     } catch (err) {
         console.warn(`Sync failed for ${table}:`, err.message);
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'bottom-end',
+            showConfirmButton: false,
+            timer: 3000,
+            background: '#f43f5e',
+            color: '#fff'
+        });
+        Toast.fire({ icon: 'error', title: 'Cloud Sync Failed' });
     }
 }
 
