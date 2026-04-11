@@ -1386,6 +1386,9 @@
             console.log("Initializing Supabase...");
             const SUPABASE_URL = "https://ayshfnqysfisfxhlsgjw.supabase.co";
             const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5c2hmbnF5c2Zpc2Z4bHNnandhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjYyNDUsImV4cCI6MjA5MTM0MjI0NX0.Lu4h2TlPoDJOdheg1BarRHp9WWDSTNe0hNgZf6oJvfc";
+            
+            // Debug check
+            alert("Checking Supabase Config:\nURL: " + SUPABASE_URL + "\nKey: " + SUPABASE_KEY.substring(0,25) + "...");
 
             let supabaseClient;
             try {
