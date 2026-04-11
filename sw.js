@@ -45,6 +45,11 @@ self.addEventListener('activate', (event) => {
 
 // Fetch Event
 self.addEventListener('fetch', (event) => {
+  // Always skip interception for ALL Supabase API requests (always go to network)
+  if (event.request.url.includes('supabase.co')) {
+    return; // Let the browser handle it normally
+  }
+
   // We want to serve from cache if available, else fetch from network and cache
   event.respondWith(
     caches.match(event.request).then((response) => {

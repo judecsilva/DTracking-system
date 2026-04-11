@@ -1405,12 +1405,13 @@
         </script>
         <script src="app.js"></script>
         <script>
-            // Service Worker Registration for Offline Support
+            // Unregister any existing Service Workers to clear persistent blocks
             if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                    navigator.serviceWorker.register('./sw.js')
-                        .then(reg => console.log('Service Worker registered', reg))
-                        .catch(err => console.error('Service Worker registration failed', err));
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    for (let registration of registrations) {
+                        registration.unregister();
+                        console.log('Service Worker Unregistered');
+                    }
                 });
             }
         </script>
