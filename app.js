@@ -998,18 +998,19 @@ function setupEventListeners() {
     // Sets & Target
     document.getElementById('staff-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const id = document.getElementById('staff-edit-id').value;
+        let idStr = document.getElementById('staff-edit-id').value;
+        let id = idStr ? (isNaN(idStr) ? idStr : Number(idStr)) : '';
         const name = document.getElementById('staff-name').value;
         const routeName = document.getElementById('staff-route').value;
         const phone = document.getElementById('staff-phone').value;
         const password = document.getElementById('staff-password').value;
         const target = Number(document.getElementById('staff-target').value) || 0;
         
-        if(id) {
+        if(id !== '') {
             // Check if phone number is taken by ANOTHER staff member
             let conflict = await db.staff
                 .where('phone').equals(phone)
-                .filter(s => s.id !== id)
+                .filter(s => String(s.id) !== String(id))
                 .first();
                 
             if(conflict) {
@@ -1140,10 +1141,10 @@ async function renderStaffTable() {
                 <td class="py-3 px-4 text-gray-400">${s.routeName}</td>
                 <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(s.target || 0)}</td>
                 <td class="py-3 px-4 text-right">
-                    <button onclick="editStaff(${s.id})" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
+                    <button onclick="editStaff('${s.id}')" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button onclick="deleteStaff(${s.id})" class="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-400/10 transition-colors">
+                    <button onclick="deleteStaff('${s.id}')" class="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-400/10 transition-colors">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
@@ -1220,7 +1221,8 @@ async function loadPreviousBalances() {
 }
 
 // Global hook for inline onclicks
-window.deleteStaff = async function(id) {
+window.deleteStaff = async function(strId) {
+    let id = strId ? (isNaN(strId) ? strId : Number(strId)) : '';
     let res = await Swal.fire({
         title: 'Delete Staff?',
         text: 'This will remove the distributor from lists. Past session data will remain in history.',
@@ -1275,7 +1277,8 @@ window.cancelStaffEdit = function() {
     document.getElementById('staff-cancel-btn').classList.add('hidden');
 }
 
-window.editStaff = async function(id) {
+window.editStaff = async function(strId) {
+    let id = strId ? (isNaN(strId) ? strId : Number(strId)) : '';
     const s = await db.staff.get(id);
     if(s) {
         document.getElementById('staff-edit-id').value = s.id;
