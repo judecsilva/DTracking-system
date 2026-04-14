@@ -1966,56 +1966,66 @@ async function manualCloudSync() {
 async function pullFromCloud() {
     if (typeof supabaseClient === 'undefined') return;
     
-    console.log("Starting cloud data pull...");
+    // Show a subtle syncing indicator
+    const syncToast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 1500,
+        timerProgressBar: true,
+        background: '#1e293b',
+        color: '#fff'
+    });
+    syncToast.fire({ icon: 'info', title: 'Cloud Syncing...' });
+
+    console.log("Starting parallel cloud data pull...");
 
     try {
-        // 1. Pull Settings
-        const { data: sData, error: sErr } = await supabaseClient.from('settings').select('*');
-        if(sErr) throw sErr;
-        
-        // Critical: Always clear local if we got a valid response (even if empty)
+        // Parallel fetch for maximum speed
+        const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
+            supabaseClient.from('settings').select('*'),
+            supabaseClient.from('staff').select('*'),
+            supabaseClient.from('daily_issues').select('*'),
+            supabaseClient.from('daily_sales').select('*')
+        ]);
+
+        if (sRes.error) throw sRes.error;
+        if (staffRes.error) throw staffRes.error;
+
+        const sData = sRes.data;
+        const staffData = staffRes.data;
+        const issueData = issueRes.data;
+        const salesData = salesRes.data;
+
+        // 1. Process Settings
         await db.settings.clear();
         if(sData && sData.length > 0) {
             await db.settings.bulkAdd(sData.map(s => ({
                 id: s.id, targetAmount: s.target_amount, working_days: s.working_days, 
                 adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
             })));
-        } else if (currentUser && currentUser.role === 'admin') {
-            // If admin is logged in but settings are gone, we might have been reset
-            console.warn("Settings gone from cloud. System might have been reset.");
         }
 
-        // 2. Pull Staff
-        const { data: staffData, error: staffErr } = await supabaseClient.from('staff').select('*');
-        if(staffErr) throw staffErr;
-        
-        await db.staff.clear(); // Always clear to stay in sync with cloud
+        // 2. Process Staff
+        await db.staff.clear();
         if(staffData && staffData.length > 0) {
             await db.staff.bulkAdd(staffData.map(s => ({
                 id: s.id, name: s.name, routeName: s.routeName, phone: s.phone, password: s.password, target: Number(s.target)
             })));
 
-            // Security Check: If current user (distributor) no longer exists in cloud staff list, log them out
             if (currentUser && currentUser.role === 'distributor') {
                 const stillExists = staffData.some(s => s.phone === currentUser.id || s.id === currentUser.id);
                 if (!stillExists) {
-                    console.error("User no longer exists in staff registry. Forced logout.");
                     logout();
                     return;
                 }
             }
-        } else {
-            // If staff table is empty and we are not admin, we MUST logout
-            if (currentUser && currentUser.role !== 'admin') {
-                logout();
-                return;
-            }
+        } else if (currentUser && currentUser.role !== 'admin') {
+            logout();
+            return;
         }
 
-        // 3. Pull Daily Records
-        const { data: issueData } = await supabaseClient.from('daily_issues').select('*');
-        const { data: salesData } = await supabaseClient.from('daily_sales').select('*');
-
+        // 3. Process Daily Records
         await db.dailyIssues.clear();
         if(issueData && issueData.length > 0) {
             await db.dailyIssues.bulkAdd(issueData.map(r => ({
@@ -2035,7 +2045,7 @@ async function pullFromCloud() {
             })));
         }
 
-        console.log("Cloud Pull Complete");
+        console.log("Parallel Cloud Pull Complete");
         updateDashboardCard();
         loadStaffDropdowns();
         renderStaffTable();
