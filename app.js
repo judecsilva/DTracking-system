@@ -1357,7 +1357,7 @@ window.handleRestoreFile = async function(event) {
 window.resetSystem = async function() {
     let res = await Swal.fire({
         title: 'Are you absolutely sure?',
-        text: 'This will wipe ALL sales, issues, staff, and targets FOREVER. You cannot undo this!',
+        text: 'This will wipe ALL sales, issues, staff, and targets FOREVER from both Local and Cloud. You cannot undo this!',
         icon: 'error',
         showCancelButton: true,
         confirmButtonColor: '#ef4444',
@@ -1370,7 +1370,7 @@ window.resetSystem = async function() {
     if (res.isConfirmed) {
         let secondRes = await Swal.fire({
             title: 'Final Confirmation',
-            text: 'Type "RESET" to confirm data deletion:',
+            text: 'Type "RESET" to confirm total data deletion:',
             input: 'text',
             inputPlaceholder: 'Type RESET',
             showCancelButton: true,
@@ -1386,6 +1386,7 @@ window.resetSystem = async function() {
 
         if (secondRes.isConfirmed) {
             try {
+                // 1. Wipe local Dexie
                 await db.transaction('rw', db.settings, db.staff, db.dailyIssues, db.dailySales, async () => {
                     await db.settings.clear();
                     await db.staff.clear();
@@ -1393,11 +1394,31 @@ window.resetSystem = async function() {
                     await db.dailySales.clear();
                 });
                 
+                // 2. Wipe Supabase (Cloud) - Order matters for foreign keys
+                if (typeof supabaseClient !== 'undefined') {
+                    await supabaseClient.from('daily_sales').delete().neq('id', -1);
+                    await supabaseClient.from('daily_issues').delete().neq('id', -1);
+                    await supabaseClient.from('staff').delete().neq('id', -1);
+                    await supabaseClient.from('settings').delete().neq('id', -1);
+                }
+
                 if (typeof currentIssuedData !== 'undefined') {
                     currentIssuedData = null; // Clear context buffer too if it's there
                 }
                 
-                await Swal.fire({ icon: 'success', title: 'System Reset', text: 'All data has been wiped.', background: '#1e293b', color: '#fff', timer: 2000, showConfirmButton:false });
+                // 3. Clear session
+                localStorage.removeItem('crdms_user');
+
+                await Swal.fire({ 
+                    icon: 'success', 
+                    title: 'System Reset', 
+                    text: 'All data has been wiped from local and cloud.', 
+                    background: '#1e293b', 
+                    color: '#fff', 
+                    timer: 2000, 
+                    showConfirmButton:false 
+                });
+                
                 window.location.reload();
             } catch(error) {
                 Swal.fire({ icon: 'error', title: 'Reset Failed', text: error.message, background: '#1e293b', color: '#fff'});
