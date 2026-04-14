@@ -47,6 +47,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('focus', () => {
         if(currentUser) pullFromCloud();
     });
+
+    // --- Supabase Realtime Listeners for Multi-Device Sync ---
+    if (typeof supabaseClient !== 'undefined') {
+        const handleCloudChange = (payload) => {
+            console.log("Cloud change detected:", payload.eventType, payload.table);
+            // If something was deleted or the whole table was cleared, we pull to stay in sync
+            pullFromCloud();
+        };
+
+        // Listen for ANY changes in key tables to keep all devices synchronized
+        supabaseClient.channel('db-changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'staff' }, handleCloudChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, handleCloudChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_sales' }, handleCloudChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_issues' }, handleCloudChange)
+            .subscribe();
+    }
 });
 
 function showLogin() {
@@ -1410,51 +1427,66 @@ window.resetSystem = async function() {
 
         if (secondRes.isConfirmed) {
             Swal.fire({
-                title: 'Resetting System...',
-                html: 'Wiping local and cloud data. Please wait...',
+                title: 'Performing Deep Reset...',
+                html: 'Deleting all cloud records and local data. Please wait...',
                 allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
-                },
+                didOpen: () => { Swal.showLoading(); },
                 background: '#1e293b',
                 color: '#fff'
             });
 
             try {
-                // 1. Wipe Supabase (Cloud) - MUST DO FIRST so we can catch errors before local wipe
+                // 1. Deep wipe Supabase (Cloud) 
+                // We fetch IDs first and delete to bypass "Mass Delete" protections or RLS issues with range filters
                 if (typeof supabaseClient !== 'undefined') {
-                    // We use not('id', 'is', null) to ensure we match everything
-                    const results = await Promise.all([
-                        supabaseClient.from('daily_sales').delete().not('id', 'is', null),
-                        supabaseClient.from('daily_issues').delete().not('id', 'is', null),
-                        supabaseClient.from('staff').delete().not('id', 'is', null),
-                        supabaseClient.from('settings').delete().not('id', 'is', null)
-                    ]);
-
-                    const errors = results.filter(r => r.error).map(r => r.error.message);
-                    if (errors.length > 0) {
-                        throw new Error("Cloud delete failed: " + errors.join(", "));
+                    const tables = ['daily_sales', 'daily_issues', 'staff', 'settings'];
+                    
+                    for (const tableName of tables) {
+                        try {
+                            // Fetch all IDs for this table
+                            const { data: items, error: fetchErr } = await supabaseClient.from(tableName).select('id');
+                            if (fetchErr) {
+                                console.warn(`Cloud fetch failed for ${tableName}:`, fetchErr.message);
+                                // Try range delete as fallback
+                                await supabaseClient.from(tableName).delete().not('id', 'is', null);
+                            } else if (items && items.length > 0) {
+                                // Delete row by row to be absolutely sure
+                                for (const item of items) {
+                                    await supabaseClient.from(tableName).delete().eq('id', item.id);
+                                }
+                                console.log(`Cloud table ${tableName} cleared row-by-row.`);
+                            }
+                        } catch (e) {
+                            console.error(`Error clearing cloud table ${tableName}:`, e);
+                        }
                     }
                 }
 
-                // 2. Wipe local Dexie
-                await db.transaction('rw', db.settings, db.staff, db.dailyIssues, db.dailySales, async () => {
-                    await db.settings.clear();
-                    await db.staff.clear();
-                    await db.dailyIssues.clear();
-                    await db.dailySales.clear();
+                // 2. Destroy local Dexie Database completely
+                await db.delete();
+                console.log("Local Database destroyed.");
+                
+                // 3. Re-create and open to avoid "Database is closed" errors before reload
+                const newDb = new Dexie("DistributionDB");
+                newDb.version(3).stores({
+                    settings: '++id, targetAmount, adminPassword',
+                    staff: '++id, name, routeName, phone, password',
+                    dailyIssues: '++id, staffId, date, [date+staffId]',
+                    dailySales: '++id, staffId, date, [date+staffId]'
                 });
+                await newDb.open();
                 
                 if (typeof currentIssuedData !== 'undefined') {
                     currentIssuedData = null;
                 }
                 
-                // 3. Clear session
-                localStorage.removeItem('crdms_user');
+                // 4. Clear ALL local storage
+                localStorage.clear();
+                sessionStorage.clear();
 
                 await Swal.fire({ 
                     icon: 'success', 
-                    title: 'System Reset', 
+                    title: 'System Reset Complete', 
                     text: 'All data has been wiped from local and cloud successfully.', 
                     background: '#1e293b', 
                     color: '#fff', 
@@ -1462,13 +1494,14 @@ window.resetSystem = async function() {
                     showConfirmButton:false 
                 });
                 
-                window.location.href = 'index.html'; // Hard redirect to ensure clean state
+                // Cleanest possible reload
+                window.location.replace('index.html'); 
             } catch(error) {
-                console.error("Reset Failed:", error);
+                console.error("Critical Reset Failure:", error);
                 Swal.fire({ 
                     icon: 'error', 
                     title: 'Reset Failed', 
-                    text: 'Could not complete factory reset: ' + error.message + '. Please check your internet connection or Supabase permissions.', 
+                    text: 'A critical error occurred: ' + error.message + '. Please try clearing your browser cache and cookies.', 
                     background: '#1e293b', 
                     color: '#fff'
                 });
@@ -1931,9 +1964,7 @@ async function manualCloudSync() {
 }
 
 async function pullFromCloud() {
-    if (typeof supabaseClient === 'undefined') {
-        return;
-    }
+    if (typeof supabaseClient === 'undefined') return;
     
     console.log("Starting cloud data pull...");
 
@@ -1942,30 +1973,51 @@ async function pullFromCloud() {
         const { data: sData, error: sErr } = await supabaseClient.from('settings').select('*');
         if(sErr) throw sErr;
         
+        // Critical: Always clear local if we got a valid response (even if empty)
+        await db.settings.clear();
         if(sData && sData.length > 0) {
-            await db.settings.clear();
             await db.settings.bulkAdd(sData.map(s => ({
-                id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
+                id: s.id, targetAmount: s.target_amount, working_days: s.working_days, 
                 adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
             })));
+        } else if (currentUser && currentUser.role === 'admin') {
+            // If admin is logged in but settings are gone, we might have been reset
+            console.warn("Settings gone from cloud. System might have been reset.");
         }
 
         // 2. Pull Staff
         const { data: staffData, error: staffErr } = await supabaseClient.from('staff').select('*');
         if(staffErr) throw staffErr;
-        if(staffData) {
-            await db.staff.clear();
+        
+        await db.staff.clear(); // Always clear to stay in sync with cloud
+        if(staffData && staffData.length > 0) {
             await db.staff.bulkAdd(staffData.map(s => ({
                 id: s.id, name: s.name, routeName: s.routeName, phone: s.phone, password: s.password, target: Number(s.target)
             })));
+
+            // Security Check: If current user (distributor) no longer exists in cloud staff list, log them out
+            if (currentUser && currentUser.role === 'distributor') {
+                const stillExists = staffData.some(s => s.phone === currentUser.id || s.id === currentUser.id);
+                if (!stillExists) {
+                    console.error("User no longer exists in staff registry. Forced logout.");
+                    logout();
+                    return;
+                }
+            }
+        } else {
+            // If staff table is empty and we are not admin, we MUST logout
+            if (currentUser && currentUser.role !== 'admin') {
+                logout();
+                return;
+            }
         }
 
         // 3. Pull Daily Records
         const { data: issueData } = await supabaseClient.from('daily_issues').select('*');
         const { data: salesData } = await supabaseClient.from('daily_sales').select('*');
 
-        if(issueData) {
-            await db.dailyIssues.clear();
+        await db.dailyIssues.clear();
+        if(issueData && issueData.length > 0) {
             await db.dailyIssues.bulkAdd(issueData.map(r => ({
                 id: r.id, staffId: r.staff_id, date: r.date, 
                 card48: r.card48, card95: r.card95, card96: r.card96, 
@@ -1973,8 +2025,8 @@ async function pullFromCloud() {
             })));
         }
 
-        if(salesData) {
-            await db.dailySales.clear();
+        await db.dailySales.clear();
+        if(salesData && salesData.length > 0) {
             await db.dailySales.bulkAdd(salesData.map(r => ({
                 id: r.id, staffId: r.staff_id, date: r.date, 
                 soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
@@ -1984,11 +2036,10 @@ async function pullFromCloud() {
         }
 
         console.log("Cloud Pull Complete");
-        
-        // Refresh UI
         updateDashboardCard();
         loadStaffDropdowns();
         renderStaffTable();
+        if(typeof renderDistributorStats === 'function') renderDistributorStats();
 
     } catch (err) {
         console.warn("Pull failed:", err.message);
