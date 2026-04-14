@@ -1206,17 +1206,41 @@ async function loadPreviousBalances() {
 window.deleteStaff = async function(id) {
     let res = await Swal.fire({
         title: 'Delete Staff?',
-        text: 'This will not delete past records, but removes them from lists.',
+        text: 'This will remove the distributor from lists. Past session data will remain in history.',
         icon: 'warning',
         showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Yes, Delete',
         background: '#1e293b',
         color: '#fff'
     });
+    
     if(res.isConfirmed) {
-        await db.staff.delete(id);
-        showToast('Deleted');
-        loadStaffDropdowns();
-        renderStaffTable();
+        try {
+            // 1. Sync Delete to Cloud
+            if (typeof supabaseClient !== 'undefined') {
+                const { error } = await supabaseClient.from('staff').delete().eq('id', id);
+                if (error) throw error;
+            }
+            
+            // 2. Delete locally
+            await db.staff.delete(id);
+            
+            showToast('Deleted');
+            loadStaffDropdowns();
+            renderStaffTable();
+            if(typeof renderDistributorStats === 'function') renderDistributorStats();
+        } catch (error) {
+            console.error("Deletion failed:", error);
+            Swal.fire({ 
+                icon: 'error', 
+                title: 'Delete Failed', 
+                text: 'Cloud sync failed: ' + (error.message || 'Unknown error'),
+                background: '#1e293b', 
+                color: '#fff'
+            });
+        }
     }
 }
 window.switchTab = switchTab;
@@ -1357,7 +1381,7 @@ window.handleRestoreFile = async function(event) {
 window.resetSystem = async function() {
     let res = await Swal.fire({
         title: 'Are you absolutely sure?',
-        text: 'This will wipe ALL sales, issues, staff, and targets FOREVER from both Local and Cloud. You cannot undo this!',
+        text: 'This will wipe ALL sales, issues, staff, and targets FOREVER from both Local and Cloud. This action is IRREVERSIBLE!',
         icon: 'error',
         showCancelButton: true,
         confirmButtonColor: '#ef4444',
@@ -1370,7 +1394,7 @@ window.resetSystem = async function() {
     if (res.isConfirmed) {
         let secondRes = await Swal.fire({
             title: 'Final Confirmation',
-            text: 'Type "RESET" to confirm total data deletion:',
+            text: 'Type "RESET" to confirm TOTAL system wipe:',
             input: 'text',
             inputPlaceholder: 'Type RESET',
             showCancelButton: true,
@@ -1385,8 +1409,35 @@ window.resetSystem = async function() {
         });
 
         if (secondRes.isConfirmed) {
+            Swal.fire({
+                title: 'Resetting System...',
+                html: 'Wiping local and cloud data. Please wait...',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                },
+                background: '#1e293b',
+                color: '#fff'
+            });
+
             try {
-                // 1. Wipe local Dexie
+                // 1. Wipe Supabase (Cloud) - MUST DO FIRST so we can catch errors before local wipe
+                if (typeof supabaseClient !== 'undefined') {
+                    // We use not('id', 'is', null) to ensure we match everything
+                    const results = await Promise.all([
+                        supabaseClient.from('daily_sales').delete().not('id', 'is', null),
+                        supabaseClient.from('daily_issues').delete().not('id', 'is', null),
+                        supabaseClient.from('staff').delete().not('id', 'is', null),
+                        supabaseClient.from('settings').delete().not('id', 'is', null)
+                    ]);
+
+                    const errors = results.filter(r => r.error).map(r => r.error.message);
+                    if (errors.length > 0) {
+                        throw new Error("Cloud delete failed: " + errors.join(", "));
+                    }
+                }
+
+                // 2. Wipe local Dexie
                 await db.transaction('rw', db.settings, db.staff, db.dailyIssues, db.dailySales, async () => {
                     await db.settings.clear();
                     await db.staff.clear();
@@ -1394,16 +1445,8 @@ window.resetSystem = async function() {
                     await db.dailySales.clear();
                 });
                 
-                // 2. Wipe Supabase (Cloud) - Order matters for foreign keys
-                if (typeof supabaseClient !== 'undefined') {
-                    await supabaseClient.from('daily_sales').delete().neq('id', -1);
-                    await supabaseClient.from('daily_issues').delete().neq('id', -1);
-                    await supabaseClient.from('staff').delete().neq('id', -1);
-                    await supabaseClient.from('settings').delete().neq('id', -1);
-                }
-
                 if (typeof currentIssuedData !== 'undefined') {
-                    currentIssuedData = null; // Clear context buffer too if it's there
+                    currentIssuedData = null;
                 }
                 
                 // 3. Clear session
@@ -1412,16 +1455,23 @@ window.resetSystem = async function() {
                 await Swal.fire({ 
                     icon: 'success', 
                     title: 'System Reset', 
-                    text: 'All data has been wiped from local and cloud.', 
+                    text: 'All data has been wiped from local and cloud successfully.', 
                     background: '#1e293b', 
                     color: '#fff', 
-                    timer: 2000, 
+                    timer: 3000, 
                     showConfirmButton:false 
                 });
                 
-                window.location.reload();
+                window.location.href = 'index.html'; // Hard redirect to ensure clean state
             } catch(error) {
-                Swal.fire({ icon: 'error', title: 'Reset Failed', text: error.message, background: '#1e293b', color: '#fff'});
+                console.error("Reset Failed:", error);
+                Swal.fire({ 
+                    icon: 'error', 
+                    title: 'Reset Failed', 
+                    text: 'Could not complete factory reset: ' + error.message + '. Please check your internet connection or Supabase permissions.', 
+                    background: '#1e293b', 
+                    color: '#fff'
+                });
             }
         }
     }
