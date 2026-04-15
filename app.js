@@ -673,7 +673,7 @@ async function handleIssueSubmit(e) {
 window.loadIssueForEdit = async function() {
     console.log('loadIssueForEdit called');
     const date = document.getElementById('issue-date').value;
-    const staffId = Number(document.getElementById('issue-staff').value);
+    const staffId = document.getElementById('issue-staff').value;
     
     console.log('Date:', date, 'Staff ID:', staffId);
     
@@ -720,7 +720,7 @@ let previousShortage = 0; // State
 
 async function handleLoadExpectedData() {
     const date = document.getElementById('collect-date').value;
-    const staffId = Number(document.getElementById('collect-staff').value);
+    const staffId = document.getElementById('collect-staff').value;
     if(!staffId) return Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
 
     try {
@@ -1523,7 +1523,7 @@ window.toggleReportStaffPicker = function() {
 window.generateReport = async function() {
     const scope = document.getElementById('report-scope').value;
     const monthStr = document.getElementById('report-month').value;
-    const staffId = Number(document.getElementById('report-staff').value);
+    const staffId = document.getElementById('report-staff').value;
     
     if(!monthStr) return showToast('Please select a month', 'error');
     if(scope === 'single' && !staffId) return showToast('Please select a distributor', 'error');
