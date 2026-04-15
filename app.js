@@ -78,7 +78,10 @@ async function showApp() {
     document.getElementById('display-user-name').innerText = currentUser.name || 'CRDMS User';
     document.getElementById('display-user-role').innerText = currentUser.role.toUpperCase() + ' MODE';
 
-    // Role-based UI restriction
+    // 1. FIRST: Load the DOM structural data
+    await loadStaffDropdowns();
+
+    // 2. Role-based UI restriction & Select Enforcements
     const tabs = ['tab-overview', 'tab-issue', 'tab-collection', 'tab-settings', 'tab-reports'];
     
     if(currentUser.role === 'distributor') {
@@ -90,20 +93,17 @@ async function showApp() {
         
         switchTab('issue');
         
-        const autoEnforceSelf = async () => {
-            const issueStaff = document.getElementById('issue-staff');
-            const collectStaff = document.getElementById('collect-staff');
-            if(issueStaff && collectStaff) {
-                const sId = currentUser.id;
-                issueStaff.value = sId;
-                collectStaff.value = sId;
-                issueStaff.disabled = true;
-                collectStaff.disabled = true;
-                loadPreviousBalances(); 
-                updateStaffPerformanceDisplay(sId);
-            }
-        };
-        setTimeout(autoEnforceSelf, 400); 
+        const issueStaff = document.getElementById('issue-staff');
+        const collectStaff = document.getElementById('collect-staff');
+        if(issueStaff && collectStaff) {
+            const sId = currentUser.id;
+            issueStaff.value = sId;
+            collectStaff.value = sId;
+            issueStaff.disabled = true;
+            collectStaff.disabled = true;
+            loadPreviousBalances(); 
+            updateStaffPerformanceDisplay(sId);
+        }
     } else {
         // Admin: Show EVERYTHING
         tabs.forEach(id => document.getElementById(id).classList.remove('hidden'));
@@ -118,8 +118,7 @@ async function showApp() {
         switchTab('overview');
     }
 
-    // Load initial data
-    await loadStaffDropdowns();
+    // 3. Load remaining data
     await updateDashboardCard();
     await renderStaffTable();
 }
@@ -1110,6 +1109,12 @@ async function loadStaffDropdowns() {
         collectDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
         if(reportDrop) reportDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
     });
+
+    // CRITICAL FIX: If a distributor's dropdown gets re-rendered during background cloud sync, we MUST re-select their ID.
+    if(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'distributor') {
+        issueDrop.value = currentUser.id;
+        collectDrop.value = currentUser.id;
+    }
 
     // Also populate settings target if present
     let s = await db.settings.toCollection().first();
