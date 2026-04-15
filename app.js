@@ -381,6 +381,7 @@ async function renderDistributorStats() {
         const perc = target > 0 ? (totalS / target * 100) : 0;
         
         // Calculate dynamic daily target for this specific staff
+        const settings = await db.settings.toCollection().first();
         const workedDays = new Set(sales.map(r => r.date)).size;
         const totalWokingDays = settings ? (settings.workingDays || 25) : 25;
         let daysLeft = totalWokingDays - workedDays;
@@ -648,7 +649,8 @@ async function handleIssueSubmit(e) {
         }
 
         calculateIssueTotal();
-        updateStaffPerformanceDisplay("");
+        const currentStaffValue = document.getElementById('issue-staff').value;
+        updateStaffPerformanceDisplay(currentStaffValue);
         updateDashboardCard();
 
         // --- Online Sync ---
@@ -746,9 +748,8 @@ async function handleLoadExpectedData() {
         const lastSale = await db.dailySales
             .where('staffId').equals(staffId)
             .and(r => r.date < date)
-            .reverse()
             .sortBy('date')
-            .then(results => results[0]);
+            .then(results => results[results.length - 1]);
 
         previousShortage = 0;
         const pBadge = document.getElementById('prev-shortage-badge');
@@ -1181,9 +1182,8 @@ async function loadPreviousBalances() {
     const lastSale = await db.dailySales
         .where('staffId').equals(staffId)
         .and(r => r.date < selectedDate)
-        .reverse()
         .sortBy('date')
-        .then(results => results[0]);
+        .then(results => results[results.length - 1]);
 
     if (lastSale) {
         document.getElementById('issue-prev-c48').value = lastSale.returnedCard48 || 0;
@@ -2004,7 +2004,7 @@ async function pullFromCloud() {
         await db.settings.clear();
         if(sData && sData.length > 0) {
             await db.settings.bulkAdd(sData.map(s => ({
-                id: s.id, targetAmount: s.target_amount, working_days: s.working_days, 
+                id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
                 adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
             })));
         }
