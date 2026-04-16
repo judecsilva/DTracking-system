@@ -227,9 +227,11 @@ function switchTab(tabId) {
     // Reset Reports view when entering for Admin
     if(tabId === 'reports' && currentUser.role === 'admin') {
         const reportStaff = document.getElementById('report-staff');
-        const distPerfWrap = document.getElementById('dist-perf-wrap'); // Main report area
+        const reportResult = document.getElementById('report-printable-area');
+        const reportMonth = document.getElementById('report-month');
         if(reportStaff) reportStaff.value = "";
-        if(distPerfWrap) distPerfWrap.classList.add('hidden');
+        if(reportMonth) reportMonth.value = "";
+        if(reportResult) reportResult.classList.add('hidden');
     }
 }
 
