@@ -2249,6 +2249,11 @@ window.generateHistoryView = async function() {
                     <td class="py-3 px-3 text-right text-orange-400">${formatCurrency(shopComm)}</td>
                     <td class="py-3 px-3 text-right text-blue-400 font-bold">${formatCurrency(handAmt)}</td>
                     <td class="py-3 px-3 text-right ${shortClass} font-bold">${formatCurrency(Math.abs(shortAmt))} ${shortAmt > 0 ? '(S)' : shortAmt < 0 ? '(E)' : ''}</td>
+                    <td class="py-3 px-3 text-center">
+                        <button onclick="deleteHistoryRecord('${date}', '${staffId}')" class="text-red-400 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-400/10 transition-colors" title="Delete Record">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
                 </tr>
             `);
         } else if (issue && !sale) {
@@ -2261,6 +2266,11 @@ window.generateHistoryView = async function() {
                     <td class="py-3 px-3">${formatCurrency(cardFV)}</td>
                     <td class="py-3 px-3 text-right">${formatCurrency(reloadIssued)}</td>
                     <td colspan="4" class="py-3 px-3 text-center text-gray-500 italic">Day not settled yet</td>
+                    <td class="py-3 px-3 text-center">
+                        <button onclick="deleteHistoryRecord('${date}', '${staffId}')" class="text-red-400 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-400/10 transition-colors" title="Delete Record">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
                 </tr>
             `);
         }
@@ -2278,8 +2288,41 @@ window.generateHistoryView = async function() {
             <th class="py-3 px-3 text-right text-orange-400 font-black">${formatCurrency(grandTotalComm)}</th>
             <th class="py-3 px-3 text-right text-blue-400 font-black">${formatCurrency(grandTotalHandCash)}</th>
             <th class="py-3 px-3 text-right ${netClass} font-black">${formatCurrency(Math.abs(netShortage))} ${netShortage > 0 ? '(S)' : netShortage < 0 ? '(E)' : ''}</th>
+            <th class="py-3 px-3"></th>
         </tr>
     `;
 
     resultArea.classList.remove('hidden');
+}
+
+window.deleteHistoryRecord = async function(date, staffId) {
+    let res = await Swal.fire({
+        title: 'Delete Entire Day?',
+        text: \`Are you sure you want to delete the records (Issue & Collection) for \${date}? This action cannot be undone.\`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Yes, Delete',
+        background: '#1e293b',
+        color: '#fff'
+    });
+    
+    if(res.isConfirmed) {
+        try {
+            if (typeof supabaseClient !== 'undefined') {
+                await supabaseClient.from('daily_issues').delete().match({ date: date, staff_id: staffId });
+                await supabaseClient.from('daily_sales').delete().match({ date: date, staff_id: staffId });
+            }
+            
+            await db.dailyIssues.where({date: date, staffId: staffId}).delete();
+            await db.dailySales.where({date: date, staffId: staffId}).delete();
+            
+            showToast('Day Record Deleted');
+            generateHistoryView(); // refresh the table
+        } catch(err) {
+            console.error("Deletion failed", err);
+            Swal.fire({ icon: 'error', title: 'Delete Failed', text: err.message, background: '#1e293b', color: '#fff' });
+        }
+    }
 }
