@@ -605,6 +605,12 @@ function calculateIssueTotal() {
     const newTotalValue = (n48 * 48) + (n95 * 95) + (n96 * 96) + nReload;
     const grandTotalValue = prevTotalValue + newTotalValue;
 
+    // Calculate Shop Commission expectation and Card Total
+    const totalCardCost = (t48 * 48) + (t95 * 95) + (t96 * 96);
+    const expectedComm = (t48 * 2) + (t95 * 4) + (t96 * 4); // 50-48=2, 99-95=4, 100-96=4
+
+    document.getElementById('issue-card-total-val').innerText = formatCurrency(totalCardCost);
+    document.getElementById('issue-shop-comm-val').innerText = formatCurrency(expectedComm);
     document.getElementById('issue-prev-total-val').innerText = formatCurrency(prevTotalValue);
     document.getElementById('issue-new-total-val').innerText = formatCurrency(newTotalValue);
     document.getElementById('issue-grand-total-val').innerText = formatCurrency(grandTotalValue);
