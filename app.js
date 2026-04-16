@@ -126,10 +126,23 @@ async function showApp() {
     if(currentUser.role === 'admin') {
         const list = await db.staff.toArray();
         let needsSync = false;
+        
+        let maxId = 0;
+        // First pass: Find the legit max ID (ignoring the random 4-digit ones > 1000)
+        list.forEach(s => {
+            if (s.sysId && s.sysId.startsWith('DS-')) {
+                const num = parseInt(s.sysId.replace('DS-', ''), 10);
+                if (!isNaN(num) && num < 1000 && num > maxId) maxId = num;
+            }
+        });
+
         for (let s of list) {
-            if (!s.sysId) {
-                s.sysId = 'DS-' + Math.floor(1000 + Math.random() * 9000);
-                s.joinedDate = new Date().toISOString().split('T')[0];
+            // If sysId is missing OR it's a random one (like DS-4821) assigned previously
+            let currentNum = s.sysId ? parseInt(s.sysId.replace('DS-', ''), 10) : 0;
+            if (!s.sysId || currentNum >= 1000) {
+                maxId++;
+                s.sysId = 'DS-' + String(maxId).padStart(4, '0');
+                s.joinedDate = s.joinedDate || new Date().toISOString().split('T')[0];
                 await db.staff.put(s);
                 syncToCloud('staff', {
                     name: s.name, route_name: s.routeName, phone: s.phone,
@@ -1051,8 +1064,16 @@ function setupEventListeners() {
                 return;
             }
             
-            // Auto-generate a System ID (e.g., DS-1249)
-            const sysId = 'DS-' + Math.floor(1000 + Math.random() * 9000);
+            // Auto-generate a Sequential System ID (e.g., DS-0001)
+            const allStaff = await db.staff.toArray();
+            let maxId = 0;
+            allStaff.forEach(s => {
+                if(s.sysId && s.sysId.startsWith('DS-')) {
+                    const num = parseInt(s.sysId.replace('DS-', ''), 10);
+                    if(!isNaN(num) && num > maxId) maxId = num;
+                }
+            });
+            const sysId = 'DS-' + String(maxId + 1).padStart(4, '0');
             
             await db.staff.add({name, routeName, phone, password, target, joinedDate, sysId});
             document.getElementById('staff-form').reset();
