@@ -2359,8 +2359,10 @@ window.generateHistoryView = async function() {
         if (sale) {
             saleAmt = (sale.soldCard48 * 48) + (sale.soldCard95 * 95) + (sale.soldCard96 * 96) + sale.soldReloadCash;
             commAmt = sale.totalCommission || 0;
-            // Expected Shop commission estimation if totalCommission is global, or calculate exactly for shops:
-            const shopComm = (sale.soldCard48 * 2) + (sale.soldCard95 * 4) + (sale.soldCard96 * 4);
+            // Calculate Shop Commission (Cards + Reload)
+            const cardComm = (sale.soldCard48 * 2) + (sale.soldCard95 * 4) + (sale.soldCard96 * 4);
+            const reloadComm = (Number(sale.soldReloadCash || 0) * 0.0638);
+            const shopComm = cardComm + reloadComm;
             
             handAmt = sale.handCash || 0;
             shortAmt = sale.shortageAmt || 0;
@@ -2374,7 +2376,11 @@ window.generateHistoryView = async function() {
             grandTotalSales += saleAmt;
             grandTotalComm += shopComm;
             grandTotalHandCash += handAmt;
-            grandTotalShortage += shortAmt; // A true rolling sum or net shortage sum
+            
+            // For Shortage: The user wants to see the FINAL balance, not a sum of daily balances.
+            // Since we sorted dates, the last 'shortAmt' in the loop will be the latest status.
+            grandTotalShortage = shortAmt; 
+            
             grandTotalCardValue += cardFV;
             grandTotalReloadIssued += reloadIssued;
             
@@ -2418,10 +2424,11 @@ window.generateHistoryView = async function() {
 
     const netShortage = grandTotalShortage;
     const netClass = netShortage > 0 ? 'text-red-500' : (netShortage < 0 ? 'text-emerald-500' : 'text-gray-400');
+    const netLabel = netShortage > 0 ? '(Shortage Balance)' : (netShortage < 0 ? '(Excess Balance)' : '(Balanced)');
 
     tfoot.innerHTML = `
         <tr>
-            <th class="py-3 px-3 text-right uppercase tracking-widest text-indigo-400 font-black">Month Total:</th>
+            <th class="py-3 px-3 text-right uppercase tracking-widest text-indigo-400 font-extrabold text-[10px]">Month Summary:</th>
             <th class="py-3 px-3 text-gray-300">-</th>
             <th class="py-3 px-3 text-right text-gray-300">-</th>
             <th class="py-3 px-3 text-right text-emerald-400 font-black">${formatCurrency(grandTotalSales)}</th>
