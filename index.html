@@ -1028,6 +1028,19 @@
                                             class="input-field py-3 px-4 text-base bg-slate-800/50 border-emerald-500/30 focus:border-emerald-500"
                                             placeholder="50000" min="0" required>
                                     </div>
+                                    <div>
+                                        <label
+                                            class="block text-xs font-bold mb-2 text-indigo-400 uppercase tracking-wider">Joined Date</label>
+                                        <input type="date" id="staff-joined"
+                                            class="input-field py-3 px-4 text-base bg-slate-800/50" required>
+                                    </div>
+                                    <div>
+                                        <label
+                                            class="block text-xs font-bold mb-2 text-gray-400 uppercase tracking-wider">System ID</label>
+                                        <input type="text" id="staff-sysid"
+                                            class="input-field py-3 px-4 text-base bg-slate-800/30 text-gray-500 border-none select-none cursor-not-allowed"
+                                            placeholder="Auto Assigned" readonly>
+                                    </div>
                                     <div class="flex items-end space-x-3">
                                         <button type="submit" id="staff-submit-btn"
                                             class="btn-primary flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 border-none shadow-lg shadow-indigo-500/20">
@@ -1049,9 +1062,11 @@
                                         <thead>
                                             <tr class="bg-slate-800/80 text-gray-300 text-xs uppercase tracking-wider">
                                                 <th
-                                                    class="py-3 px-4 font-semibold text-center w-12 border-b border-slate-700">
+                                                    class="py-3 px-4 font-semibold text-center w-8 border-b border-slate-700">
                                                     #</th>
+                                                <th class="py-3 px-2 font-semibold border-b border-slate-700 text-xs">EMP ID</th>
                                                 <th class="py-3 px-4 font-semibold border-b border-slate-700">Name</th>
+                                                <th class="py-3 px-4 font-semibold border-b border-slate-700">Joined</th>
                                                 <th class="py-3 px-4 font-semibold border-b border-slate-700">Route</th>
                                                 <th class="py-3 px-4 font-semibold border-b border-slate-700">Target
                                                 </th>

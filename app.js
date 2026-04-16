@@ -1005,6 +1005,7 @@ function setupEventListeners() {
         const phone = document.getElementById('staff-phone').value;
         const password = document.getElementById('staff-password').value;
         const target = Number(document.getElementById('staff-target').value) || 0;
+        const joinedDate = document.getElementById('staff-joined').value;
         
         if(id !== '') {
             // Check if phone number is taken by ANOTHER staff member
@@ -1018,7 +1019,7 @@ function setupEventListeners() {
                 return;
             }
 
-            await db.staff.update(id, {name, routeName, phone, password, target});
+            await db.staff.update(id, {name, routeName, phone, password, target, joinedDate});
             showToast('Staff Updated');
             cancelStaffEdit();
         } else {
@@ -1028,7 +1029,11 @@ function setupEventListeners() {
                 Swal.fire({ icon: 'error', title: 'Duplicate Entry', text: `A staff member (${exists.name}) already exists with this phone number.`, background: '#1e293b', color: '#fff'});
                 return;
             }
-            await db.staff.add({name, routeName, phone, password, target});
+            
+            // Auto-generate a System ID (e.g., DS-1249)
+            const sysId = 'DS-' + Math.floor(1000 + Math.random() * 9000);
+            
+            await db.staff.add({name, routeName, phone, password, target, joinedDate, sysId});
             document.getElementById('staff-form').reset();
             showToast('Staff Added');
         }
@@ -1041,7 +1046,9 @@ function setupEventListeners() {
                 route_name: s.routeName,
                 phone: s.phone,
                 password: s.password,
-                target: s.target
+                target: s.target,
+                joined_date: s.joinedDate,
+                sys_id: s.sysId
             }, { phone: s.phone });
         }
 
@@ -1139,11 +1146,13 @@ async function renderStaffTable() {
     list.forEach((s, idx) => {
         tbody.insertAdjacentHTML('beforeend', `
             <tr class="hover:bg-slate-800/50 transition-colors">
-                <td class="py-3 px-4 text-center font-medium">${idx+1}</td>
+                <td class="py-3 px-4 text-center font-medium w-8">${idx+1}</td>
+                <td class="py-3 px-2 text-xs font-mono font-bold text-indigo-400">${s.sysId || '-'}</td>
                 <td class="py-3 px-4">
                     <div class="font-semibold text-white">${s.name}</div>
                     <div class="text-xs text-gray-500">${s.phone}</div>
                 </td>
+                <td class="py-3 px-4 text-xs font-mono text-gray-400">${s.joinedDate || '-'}</td>
                 <td class="py-3 px-4 text-gray-400">${s.routeName}</td>
                 <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(s.target || 0)}</td>
                 <td class="py-3 px-4 text-right">
@@ -1288,6 +1297,8 @@ window.editStaff = async function(strId) {
     if(s) {
         document.getElementById('staff-edit-id').value = s.id;
         document.getElementById('staff-name').value = s.name;
+        document.getElementById('staff-joined').value = s.joinedDate || '';
+        document.getElementById('staff-sysid').value = s.sysId || '';
         document.getElementById('staff-route').value = s.routeName;
         document.getElementById('staff-phone').value = s.phone;
         document.getElementById('staff-password').value = s.password || '';
@@ -2018,7 +2029,8 @@ async function pullFromCloud() {
         await db.staff.clear();
         if(staffData && staffData.length > 0) {
             await db.staff.bulkAdd(staffData.map(s => ({
-                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target)
+                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target),
+                joinedDate: s.joined_date, sysId: s.sys_id
             })));
 
             if (currentUser && currentUser.role === 'distributor') {
