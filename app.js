@@ -674,9 +674,9 @@ async function handleIssueSubmit(e) {
     const totalIssuedValue = (n48 * 48) + (n95 * 95) + (n96 * 96) + nReload;
 
     try {
-        let existing = await db.dailyIssues.where({date, staffId}).first();
+        let existing = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
         if(!existing && !isNaN(staffId)) {
-            existing = await db.dailyIssues.where({date, staffId: Number(staffId)}).first();
+            existing = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
         }
         
         const data = {
@@ -804,13 +804,45 @@ async function handleLoadExpectedData() {
     if(!staffId) return Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
 
     try {
-        let issued = await db.dailyIssues.where({date, staffId}).first();
+        // 1. Try to fetch today's Issue record
+        let issued = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
         if(!issued && !isNaN(staffId)) {
-            issued = await db.dailyIssues.where({date, staffId: Number(staffId)}).first();
+            issued = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
         }
         
+        // 2. SMART ROLLOVER: If no Issue record exists for today, find the latest state from BEFORE today
         if(!issued) {
-            Swal.fire({ icon: 'info', title: 'No Issued Stock', text: 'No stock was issued to this staff on selected date.', background: '#1e293b', color: '#fff' });
+            console.log("No morning issue found for today. Looking for the latest snapshot...");
+            
+            // Re-use logic: Whichever is newer (last Sale or last Issue)
+            const lastSale = await db.dailySales.where('staffId').equals(staffId).and(r => r.date < date).sortBy('date').then(res => res[res.length-1]);
+            const lastIssue = await db.dailyIssues.where('staffId').equals(staffId).and(r => r.date < date).sortBy('date').then(res => res[res.length-1]);
+            
+            let source = null;
+            let fromSales = false;
+
+            if (lastSale && lastIssue) {
+                if (lastSale.date >= lastIssue.date) { source = lastSale; fromSales = true; }
+                else { source = lastIssue; fromSales = false; }
+            } else if (lastSale) { source = lastSale; fromSales = true; }
+            else if (lastIssue) { source = lastIssue; fromSales = false; }
+
+            if (source) {
+                // Synthesize an 'issued' object based on what they were carrying
+                issued = {
+                    staffId: staffId,
+                    date: date,
+                    card48: fromSales ? (source.returnedCard48 || 0) : (source.card48 || 0),
+                    card95: fromSales ? (source.returnedCard95 || 0) : (source.card95 || 0),
+                    card96: fromSales ? (source.returnedCard96 || 0) : (source.card96 || 0),
+                    reloadCash: fromSales ? (Number(source.availReload || 0) - Number(source.soldReloadCash || 0)) : (source.reloadCash || 0)
+                };
+                showToast('No issue today: Rolled over yesterday\'s stock', 'info');
+            }
+        }
+
+        if(!issued) {
+            Swal.fire({ icon: 'info', title: 'No Stock Found', text: 'No morning issue or previous carry-over found for this staff.', background: '#1e293b', color: '#fff' });
             document.getElementById('collection-details').classList.add('hidden');
             return;
         }
@@ -818,11 +850,11 @@ async function handleLoadExpectedData() {
         currentIssuedData = issued;
         document.getElementById('collection-details').classList.remove('hidden');
         
-        // Populate Availabilities (From setup)
+        // Populate Availabilities
         document.getElementById('avail-c48').value = issued.card48;
         document.getElementById('avail-c95').value = issued.card95;
         document.getElementById('avail-c96').value = issued.card96;
-        document.getElementById('avail-reload-disp').innerText = `Avail Reload: Rs. ${issued.reloadCash.toLocaleString()}`;
+        document.getElementById('avail-reload-disp').innerText = `Stock: Rs. ${issued.reloadCash.toLocaleString()}`;
         document.getElementById('avail-reload-val').value = issued.reloadCash;
 
         // Reset fields
@@ -1040,9 +1072,9 @@ async function handleCollectionSubmit(e) {
     };
 
     try {
-        let existing = await db.dailySales.where({date, staffId}).first();
+        let existing = await db.dailySales.where('[date+staffId]').equals([date, staffId]).first();
         if(!existing && !isNaN(staffId)) {
-            existing = await db.dailySales.where({date, staffId: Number(staffId)}).first();
+            existing = await db.dailySales.where('[date+staffId]').equals([date, Number(staffId)]).first();
         }
         
         if(existing) { await db.dailySales.update(existing.id, data); }
