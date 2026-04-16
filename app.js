@@ -957,8 +957,15 @@ function calculateExpectedCash() {
     const commReload = (sReload * 0.0638);
     const totalComm = commCard + commReload;
 
-    const todaySalesOnly = totalCardsValue + sReload;
-    const expected = todaySalesOnly + previousShortage;
+    // Commission Calculations (Informative only)
+    const commCard = (s48 * 2) + (s95 * 4) + (s96 * 4);
+    const commReload = (sReload * 0.0638);
+    const totalComm = commCard + commReload;
+
+    // Expected Cash logic: (Cards at Cost) + (Full Reload) + (Prev Debt)
+    // Commission is NOT subtracted from the cash expected.
+    const todayExpected = totalCardsValue + sReload;
+    const expected = todayExpected + previousShortage;
 
     // Update UI
     document.getElementById('val-c48').innerText = cardVal48.toLocaleString();
@@ -1025,10 +1032,13 @@ async function handleCollectionSubmit(e) {
     const commCard = (soldCard48 * 2) + (soldCard95 * 4) + (soldCard96 * 4);
     const commReload = (soldReloadCash * 0.0638);
     const totalCommission = commCard + commReload;
-    const todayExpected = (soldCard48 * 48) + (soldCard95 * 95) + (soldCard96 * 96) + soldReloadCash;
+    const totalCardsValue = (soldCard48 * 48) + (soldCard95 * 95) + (soldCard96 * 96);
+
+    // Expected Cash from Today: (Cards @ Cost) + (Full Reload) - No commission subtraction
+    const todayExpected = totalCardsValue + soldReloadCash;
     const totalWithDebt = todayExpected + previousShortage;
 
-    if (Math.abs(handCash - totalWithDebt) > 0.01) {
+    if (Math.abs(handCash - totalWithDebt) > 0.1) {
         let res = await Swal.fire({
             title: 'Cash Mismatch!',
             text: `Hand cash (${formatCurrency(handCash)}) does not match Total Expected (${formatCurrency(totalWithDebt)} incl. prev debt). Continue anyway?`,
