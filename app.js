@@ -2298,7 +2298,7 @@ window.generateHistoryView = async function() {
 window.deleteHistoryRecord = async function(date, staffId) {
     let res = await Swal.fire({
         title: 'Delete Entire Day?',
-        text: \`Are you sure you want to delete the records (Issue & Collection) for \${date}? This action cannot be undone.\`,
+        text: `Are you sure you want to delete the records (Issue & Collection) for ${date}? This action cannot be undone.`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#ef4444',
