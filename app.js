@@ -599,6 +599,12 @@ function calculateIssueTotal() {
     document.getElementById('issue-total-c48').value = t48;
     document.getElementById('issue-total-c95').value = t95;
     document.getElementById('issue-total-c96').value = t96;
+    
+    // NEW: Update individual row logic for value display
+    document.getElementById('issue-val-c48').value = formatCurrency(t48 * 48);
+    document.getElementById('issue-val-c95').value = formatCurrency(t95 * 95);
+    document.getElementById('issue-val-c96').value = formatCurrency(t96 * 96);
+    
     document.getElementById('issue-total-reload-disp').innerText = formatCurrency(tReload);
     document.getElementById('issue-total-reload-val').value = tReload;
 
