@@ -744,11 +744,8 @@ async function handleIssueSubmit(e) {
 }
 
 window.loadIssueForEdit = async function() {
-    console.log('loadIssueForEdit called');
     const date = document.getElementById('issue-date').value;
     const staffId = document.getElementById('issue-staff').value;
-    
-    console.log('Date:', date, 'Staff ID:', staffId);
     
     if(!date || !staffId) {
         Swal.fire('Info', 'Please select a staff and date first.', 'info');
@@ -756,23 +753,28 @@ window.loadIssueForEdit = async function() {
     }
 
     try {
-        let record = await db.dailyIssues.where({date, staffId}).first();
+        // 1. Fetch the actual record for today
+        let record = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
         if(!record && !isNaN(staffId)) {
-            // Fallback for legacy numerical IDs synced from Supabase before the type enforcement fix
-            record = await db.dailyIssues.where({date, staffId: Number(staffId)}).first();
+            record = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
         }
         
         if (record) {
-            document.getElementById('issue-new-c48').value = record.newC48 || 0;
-            document.getElementById('issue-new-c95').value = record.newC95 || 0;
-            document.getElementById('issue-new-c96').value = record.newC96 || 0;
-            document.getElementById('issue-new-reload').value = record.newReload || 0;
-            
-            // Re-load the previous balance for that day too
-            document.getElementById('issue-prev-c48').value = record.prevC48 || 0;
-            document.getElementById('issue-prev-c95').value = record.prevC95 || 0;
-            document.getElementById('issue-prev-c96').value = record.prevC96 || 0;
-            document.getElementById('issue-prev-reload').value = record.prevReload || 0;
+            // 2. FIRST, load the previous balances from the day BEFORE this date
+            // This populates the 'Yesterday' input fields.
+            await loadPreviousBalances();
+
+            // 3. NOW, set the 'New' values by subtracting Yesterday's returns from Total
+            const prev48 = Number(document.getElementById('issue-prev-c48').value) || 0;
+            const prev95 = Number(document.getElementById('issue-prev-c95').value) || 0;
+            const prev96 = Number(document.getElementById('issue-prev-c96').value) || 0;
+            const prevReload = Number(document.getElementById('issue-prev-reload').value) || 0;
+
+            // record.card48 is the TOTAL. So New = Total - Yesterday
+            document.getElementById('issue-new-c48').value = (record.card48 - prev48);
+            document.getElementById('issue-new-c95').value = (record.card95 - prev95);
+            document.getElementById('issue-new-c96').value = (record.card96 - prev96);
+            document.getElementById('issue-new-reload').value = (record.reloadCash - prevReload);
 
             calculateIssueTotal();
             showToast('Morning setup loaded for edit');
@@ -786,8 +788,8 @@ window.loadIssueForEdit = async function() {
             });
         }
     } catch(err) {
-        console.error(err);
-        showToast('Error loading data', 'error');
+        console.error("Load for edit error:", err);
+        showToast('Error loading data: ' + err.message, 'error');
     }
 }
 
