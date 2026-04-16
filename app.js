@@ -952,11 +952,6 @@ function calculateExpectedCash() {
     const cardVal96 = s96 * 96;
     const totalCardsValue = cardVal48 + cardVal95 + cardVal96;
 
-    // Commission Calculations
-    const commCard = (s48 * 2) + (s95 * 4) + (s96 * 4);
-    const commReload = (sReload * 0.0638);
-    const totalComm = commCard + commReload;
-
     // Commission Calculations (Informative only)
     const commCard = (s48 * 2) + (s95 * 4) + (s96 * 4);
     const commReload = (sReload * 0.0638);
@@ -964,6 +959,7 @@ function calculateExpectedCash() {
 
     // Expected Cash logic: (Cards at Cost) + (Full Reload) + (Prev Debt)
     // Commission is NOT subtracted from the cash expected.
+    const todaySalesOnly = totalCardsValue + sReload; 
     const todayExpected = totalCardsValue + sReload;
     const expected = todayExpected + previousShortage;
 
