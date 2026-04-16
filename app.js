@@ -823,6 +823,27 @@ async function handleLoadExpectedData() {
     } catch(err) { console.error(err); showToast('Failed to load data', 'error'); }
 }
 
+window.clearCollectionForm = function() {
+    const detailsWrap = document.getElementById('collection-details');
+    if (detailsWrap) detailsWrap.classList.add('hidden');
+    
+    currentIssuedData = null;
+    previousShortage = 0;
+    document.getElementById('prev-shortage-badge')?.classList.add('hidden');
+    
+    ['avail-c48', 'avail-c95', 'avail-c96', 'avail-reload-val',
+     'sold-c48', 'sold-c95', 'sold-c96', 'sold-reload', 
+     'return-c48', 'return-c95', 'return-c96', 'collect-handcash'].forEach(id => {
+        let el = document.getElementById(id);
+        if(el) el.value = 0;
+    });
+    
+    const reloadDisp = document.getElementById('avail-reload-disp');
+    if (reloadDisp) reloadDisp.innerText = `Avail Reload: Rs. 0`;
+    
+    calculateExpectedCash();
+}
+
 function calculateExpectedCash() {
     const s48 = Number(document.getElementById('sold-c48').value) || 0;
     const s95 = Number(document.getElementById('sold-c95').value) || 0;

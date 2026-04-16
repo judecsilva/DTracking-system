@@ -763,11 +763,11 @@
                             <div>
                                 <label class="block text-xs font-bold mb-2 text-gray-400 uppercase">Settlement
                                     Date</label>
-                                <input type="date" id="collect-date" class="input-field" required>
+                                <input type="date" id="collect-date" class="input-field" onchange="clearCollectionForm();" required>
                             </div>
                             <div>
                                 <label class="block text-xs font-bold mb-2 text-gray-400 uppercase">Staff Member</label>
-                                <select id="collect-staff" class="input-field" required>
+                                <select id="collect-staff" class="input-field" onchange="updateStaffPerformanceDisplay(this.value); clearCollectionForm();" required>
                                     <option value="" disabled selected>Select Staff...</option>
                                 </select>
                             </div>
