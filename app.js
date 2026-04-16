@@ -1335,8 +1335,10 @@ async function loadPreviousBalances() {
 
     // Fallback for type mismatch in history rollover
     if(!lastSale && !isNaN(staffId)) {
+    // Fallback for type mismatch or old records
+    if(!lastSale) {
         lastSale = await db.dailySales
-            .where('staffId').equals(Number(staffId))
+            .where('staffId').equals(isNaN(staffId) ? staffId : Number(staffId))
             .and(r => r.date < selectedDate)
             .sortBy('date')
             .then(results => results[results.length - 1]);
@@ -1346,7 +1348,9 @@ async function loadPreviousBalances() {
         document.getElementById('issue-prev-c48').value = lastSale.returnedCard48 || 0;
         document.getElementById('issue-prev-c95').value = lastSale.returnedCard95 || 0;
         document.getElementById('issue-prev-c96').value = lastSale.returnedCard96 || 0;
-        document.getElementById('issue-prev-reload').value = (lastSale.availReload - lastSale.soldReloadCash) || 0;
+        const availableReloadAtSettlement = Number(lastSale.availReload || 0);
+        const soldReloadDuringSettlement = Number(lastSale.soldReloadCash || 0);
+        document.getElementById('issue-prev-reload').value = (availableReloadAtSettlement - soldReloadDuringSettlement) || 0;
         
         // --- NEW: Display Shortage/Excess in Issue Page ---
         const cashWrap = document.getElementById('issue-prev-cash-wrap');
@@ -1605,26 +1609,33 @@ window.resetSystem = async function() {
                     
                     for (const tableName of tables) {
                         try {
-                            console.log(`Clearing cloud table ${tableName}...`);
-                            // Efficient mass delete: matching anything with id > 0 (or id not null)
-                            // Supabase requires a filter for delete, so .gt('id', 0) or .neq('id', 0) works.
-                            const { error: delErr } = await supabaseClient
-                                .from(tableName)
-                                .delete()
-                                .neq('id', -1); // Deletes all rows where ID is not -1 (all rows)
+                            console.log(`Deep cleaning cloud table: ${tableName}`);
                             
-                            if (delErr) {
-                                console.warn(`Cloud delete failed for ${tableName}:`, delErr.message);
-                                // Try fallback loop only if mass delete fails
-                                const { data: items } = await supabaseClient.from(tableName).select('id');
-                                if (items && items.length > 0) {
-                                    for (const item of items) {
-                                        await supabaseClient.from(tableName).delete().eq('id', item.id);
-                                    }
+                            // 1. First attempt: Use id > -1 (universal filter for numeric IDs)
+                            let { error: err1 } = await supabaseClient.from(tableName).delete().gt('id', -1);
+                            
+                            // 2. Second attempt: Filter by a common non-null field if PK delete was blocked
+                            if (err1) {
+                                console.warn(`Mass delete via 'id' filter failed for ${tableName}. Trying fallback...`);
+                                if (tableName === 'staff') {
+                                    await supabaseClient.from(tableName).delete().neq('phone', 'WIPE-000');
+                                } else if (tableName === 'settings') {
+                                    await supabaseClient.from(tableName).delete().neq('working_days', 0);
+                                } else {
+                                    await supabaseClient.from(tableName).delete().neq('date', '1900-01-01');
+                                }
+                            }
+
+                            // 3. Third attempt: Row-by-row verification
+                            const { data: remaining } = await supabaseClient.from(tableName).select('id').limit(10);
+                            if (remaining && remaining.length > 0) {
+                                console.log(`Table ${tableName} still has ${remaining.length} records. Forcing row-by-row delete...`);
+                                for (const item of remaining) {
+                                    await supabaseClient.from(tableName).delete().eq('id', item.id);
                                 }
                             }
                         } catch (e) {
-                            console.error(`Error clearing cloud table ${tableName}:`, e);
+                            console.error(`Fatal error during cloud wipe of ${tableName}:`, e);
                         }
                     }
                 }
@@ -2158,6 +2169,8 @@ async function pullFromCloud() {
 
         if (sRes.error) throw sRes.error;
         if (staffRes.error) throw staffRes.error;
+        if (issueRes.error) throw issueRes.error;
+        if (salesRes.error) throw salesRes.error;
 
         const sData = sRes.data;
         const staffData = staffRes.data;
