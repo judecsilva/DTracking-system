@@ -2018,7 +2018,7 @@ async function pullFromCloud() {
         await db.staff.clear();
         if(staffData && staffData.length > 0) {
             await db.staff.bulkAdd(staffData.map(s => ({
-                id: s.id, name: s.name, routeName: s.routeName, phone: s.phone, password: s.password, target: Number(s.target)
+                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target)
             })));
 
             if (currentUser && currentUser.role === 'distributor') {
