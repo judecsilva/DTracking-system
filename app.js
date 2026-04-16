@@ -208,6 +208,29 @@ function switchTab(tabId) {
             loadPreviousBalances();
         }
     }
+    
+    // Reset History view when entering for Admin
+    if(tabId === 'history' && currentUser.role === 'admin') {
+        const historyStaff = document.getElementById('history-staff');
+        const historyResult = document.getElementById('history-result-area');
+        if(historyStaff) historyStaff.value = "";
+        if(historyResult) historyResult.classList.add('hidden');
+    }
+    
+    // Reset Collection view when entering for Admin
+    if(tabId === 'collection' && currentUser.role === 'admin') {
+        const collectStaff = document.getElementById('collect-staff');
+        if(collectStaff) collectStaff.value = "";
+        if(typeof clearCollectionForm === 'function') clearCollectionForm();
+    }
+
+    // Reset Reports view when entering for Admin
+    if(tabId === 'reports' && currentUser.role === 'admin') {
+        const reportStaff = document.getElementById('report-staff');
+        const distPerfWrap = document.getElementById('dist-perf-wrap'); // Main report area
+        if(reportStaff) reportStaff.value = "";
+        if(distPerfWrap) distPerfWrap.classList.add('hidden');
+    }
 }
 
 function updateMonthDisplay() {
