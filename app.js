@@ -1327,53 +1327,77 @@ async function loadPreviousBalances() {
         return;
     }
 
-    // Find the last SALES record (Evening collection) BEFORE the selected date
-    // Note: We rollover the RETURNED items from the last settlement.
-    let lastSale = await db.dailySales
-        .where('staffId').equals(staffId)
-        .and(r => r.date < selectedDate)
-        .sortBy('date')
-        .then(results => results[results.length - 1]);
+    // 1. Get the last Sales record (Settlement)
+    let lastSale = await db.dailySales.where('staffId').equals(staffId).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
+    if(!lastSale && !isNaN(staffId)) lastSale = await db.dailySales.where('staffId').equals(Number(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
 
-    // Fallback for type mismatch or old records
-    if(!lastSale && !isNaN(staffId)) {
-        lastSale = await db.dailySales
-            .where('staffId').equals(Number(staffId))
-            .and(r => r.date < selectedDate)
-            .sortBy('date')
-            .then(results => results[results.length - 1]);
+    // 2. Get the last Issue record (Morning setup)
+    let lastIssue = await db.dailyIssues.where('staffId').equals(staffId).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
+    if(!lastIssue && !isNaN(staffId)) lastIssue = await db.dailyIssues.where('staffId').equals(Number(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
+
+    // 3. Logic: Whichever is newer is the current state of the distributor's bag.
+    // If an issue happened on the 13th but NO collection was entered for the 13th,
+    // the 14th should see the full Issued amount from the 13th.
+    
+    let sourceRecord = null;
+    let useReturnedFields = false;
+
+    if (lastSale && lastIssue) {
+        if (lastSale.date >= lastIssue.date) {
+            sourceRecord = lastSale;
+            useReturnedFields = true; 
+        } else {
+            sourceRecord = lastIssue;
+            useReturnedFields = false;
+        }
+    } else if (lastSale) {
+        sourceRecord = lastSale;
+        useReturnedFields = true;
+    } else if (lastIssue) {
+        sourceRecord = lastIssue;
+        useReturnedFields = false;
     }
 
-    if (lastSale) {
-        document.getElementById('issue-prev-c48').value = lastSale.returnedCard48 || 0;
-        document.getElementById('issue-prev-c95').value = lastSale.returnedCard95 || 0;
-        document.getElementById('issue-prev-c96').value = lastSale.returnedCard96 || 0;
-        const availableReloadAtSettlement = Number(lastSale.availReload || 0);
-        const soldReloadDuringSettlement = Number(lastSale.soldReloadCash || 0);
-        document.getElementById('issue-prev-reload').value = (availableReloadAtSettlement - soldReloadDuringSettlement) || 0;
-        
-        // --- NEW: Display Shortage/Excess in Issue Page ---
+    if (sourceRecord) {
+        if (useReturnedFields) {
+            // It's a settlement record: use what was brought back
+            document.getElementById('issue-prev-c48').value = sourceRecord.returnedCard48 || 0;
+            document.getElementById('issue-prev-c95').value = sourceRecord.returnedCard95 || 0;
+            document.getElementById('issue-prev-c96').value = sourceRecord.returnedCard96 || 0;
+            const avail = Number(sourceRecord.availReload || 0);
+            const sold = Number(sourceRecord.soldReloadCash || 0);
+            document.getElementById('issue-prev-reload').value = (avail - sold) || 0;
+        } else {
+            // It's just an issue record (no settlement yet): they have the FULL total
+            document.getElementById('issue-prev-c48').value = sourceRecord.card48 || 0;
+            document.getElementById('issue-prev-c95').value = sourceRecord.card95 || 0;
+            document.getElementById('issue-prev-c96').value = sourceRecord.card96 || 0;
+            document.getElementById('issue-prev-reload').value = sourceRecord.reloadCash || 0;
+        }
+
+        // --- Handle Shortage/Excess Badge (Only from Sales records) ---
         const cashWrap = document.getElementById('issue-prev-cash-wrap');
         const cashLabel = document.getElementById('issue-prev-cash-label');
         const cashValue = document.getElementById('issue-prev-cash-val');
-        
-        if(lastSale.shortageAmt && lastSale.shortageAmt !== 0) {
+
+        // Only show shortage/excess if the last SALE record exists (even if it's older than the issue)
+        // because Issues don't create financial shortages.
+        if (lastSale && lastSale.shortageAmt && lastSale.shortageAmt !== 0) {
             cashWrap.classList.remove('hidden');
-            if(lastSale.shortageAmt > 0) {
+            if (lastSale.shortageAmt > 0) {
                 cashLabel.innerText = "Unpaid Shortage";
-                cashLabel.classList.replace('text-emerald-400', 'text-red-400');
+                cashLabel.className = "text-[10px] font-black uppercase text-red-400 tracking-widest";
                 cashValue.innerText = `Rs. ${lastSale.shortageAmt}`;
                 cashValue.className = "text-base font-black text-red-500";
             } else {
                 cashLabel.innerText = "Excess Credit";
-                cashLabel.classList.replace('text-red-400', 'text-emerald-400');
+                cashLabel.className = "text-[10px] font-black uppercase text-emerald-400 tracking-widest";
                 cashValue.innerText = `Rs. ${Math.abs(lastSale.shortageAmt)}`;
                 cashValue.className = "text-base font-black text-emerald-400";
             }
         } else {
             cashWrap.classList.add('hidden');
         }
-
     } else {
         document.getElementById('issue-prev-cash-wrap').classList.add('hidden');
     }
