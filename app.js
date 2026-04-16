@@ -121,6 +121,27 @@ async function showApp() {
     // 3. Load remaining data
     await updateDashboardCard();
     await renderStaffTable();
+
+    // 4. Data Migration for Old Staff
+    if(currentUser.role === 'admin') {
+        const list = await db.staff.toArray();
+        let needsSync = false;
+        for (let s of list) {
+            if (!s.sysId) {
+                s.sysId = 'DS-' + Math.floor(1000 + Math.random() * 9000);
+                s.joinedDate = new Date().toISOString().split('T')[0];
+                await db.staff.put(s);
+                syncToCloud('staff', {
+                    name: s.name, route_name: s.routeName, phone: s.phone,
+                    password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
+                }, { phone: s.phone });
+                needsSync = true;
+            }
+        }
+        if(needsSync) {
+            await renderStaffTable();
+        }
+    }
 }
 
 window.logout = function() {
