@@ -1333,12 +1333,10 @@ async function loadPreviousBalances() {
         .sortBy('date')
         .then(results => results[results.length - 1]);
 
-    // Fallback for type mismatch in history rollover
-    if(!lastSale && !isNaN(staffId)) {
     // Fallback for type mismatch or old records
-    if(!lastSale) {
+    if(!lastSale && !isNaN(staffId)) {
         lastSale = await db.dailySales
-            .where('staffId').equals(isNaN(staffId) ? staffId : Number(staffId))
+            .where('staffId').equals(Number(staffId))
             .and(r => r.date < selectedDate)
             .sortBy('date')
             .then(results => results[results.length - 1]);
