@@ -294,6 +294,10 @@
                     class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
                     <i class="fas fa-file-invoice-dollar mr-2"></i> Reports
                 </button>
+                <button onclick="switchTab('history')" id="tab-history"
+                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
+                    <i class="fas fa-calendar-alt mr-2"></i> History
+                </button>
             </nav>
 
             <div class="flex-1 relative bg-slate-900/40">
@@ -1265,6 +1269,63 @@
                     <!-- Print Action placeholder -->
                     <button onclick="window.print()" id="btn-print-report" class="hidden no-print"></button>
                 </div>
+
+                <!-- HISTORY TAB (NEW) -->
+                <div id="history" class="tab-content hidden fade-in p-6">
+                    <div class="mb-6">
+                        <h2 class="text-2xl font-bold text-white mb-1">Distributor Monthly History</h2>
+                        <p class="text-sm text-gray-400">View detailed, day-by-day summary of stock logic and sales.</p>
+                    </div>
+
+                    <div class="glass-panel p-6 mb-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                            <div>
+                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">Select Distributor</label>
+                                <select id="history-staff" class="input-field py-2" required></select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">Select Month</label>
+                                <input type="month" id="history-month" class="input-field py-2" required>
+                            </div>
+                            <div>
+                                <button onclick="generateHistoryView()" class="btn-primary py-2.5 w-full shadow-indigo-500/20">
+                                    <i class="fas fa-history mr-2"></i> Fetch History
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="history-result-area" class="hidden glass-panel overflow-hidden border-indigo-500/10 shadow-xl bg-slate-800/20">
+                        <div class="p-5 border-b border-slate-700/50 flex justify-between items-center bg-[#1e293b]/50">
+                            <div>
+                                <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name</h3>
+                                <p class="text-xs text-gray-400" id="history-title-month">Month</p>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-indigo-600/10 text-[9px] font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20">
+                                    <tr>
+                                        <th class="py-3 px-3">Date</th>
+                                        <th class="py-3 px-3">Cards (Total FV)</th>
+                                        <th class="py-3 px-3 text-right">Reload Issued</th>
+                                        <th class="py-3 px-3 text-right text-emerald-400">Sales Amount</th>
+                                        <th class="py-3 px-3 text-right text-orange-400">Shop Comm.</th>
+                                        <th class="py-3 px-3 text-right text-blue-400">Cash Handed Over</th>
+                                        <th class="py-3 px-3 text-right">Daily Shortage/Excess</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-tbody" class="divide-y divide-slate-700/50">
+                                    <!-- Dynamic Rows -->
+                                </tbody>
+                                <tfoot id="history-tfoot" class="bg-slate-900 border-t border-slate-600">
+                                    <!-- Totals -->
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- System Global Footer -->
                 <footer class="no-print mt-auto py-6 text-center border-t border-slate-700/30 bg-[#1e293b]/20">
                     <p class="text-[10px] text-slate-500 uppercase tracking-widest font-black mb-1">Centralized

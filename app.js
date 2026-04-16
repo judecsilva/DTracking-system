@@ -82,11 +82,12 @@ async function showApp() {
     await loadStaffDropdowns();
 
     // 2. Role-based UI restriction & Select Enforcements
-    const tabs = ['tab-overview', 'tab-issue', 'tab-collection', 'tab-settings', 'tab-reports'];
+    const tabs = ['tab-overview', 'tab-issue', 'tab-collection', 'tab-settings', 'tab-reports', 'tab-history'];
     
     if(currentUser.role === 'distributor') {
         document.getElementById('tab-overview').classList.add('hidden');
         document.getElementById('tab-settings').classList.add('hidden');
+        document.getElementById('tab-history').classList.add('hidden');
         document.getElementById('tab-issue').classList.remove('hidden');
         document.getElementById('tab-collection').classList.remove('hidden');
         document.getElementById('tab-reports').classList.add('hidden');
@@ -1174,16 +1175,19 @@ async function loadStaffDropdowns() {
     let issueDrop = document.getElementById('issue-staff');
     let collectDrop = document.getElementById('collect-staff');
     let reportDrop = document.getElementById('report-staff');
+    let historyDrop = document.getElementById('history-staff');
     
     // Clear existing
     issueDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
     collectDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
     if(reportDrop) reportDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
+    if(historyDrop) historyDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
 
     list.forEach(s => {
         issueDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
         collectDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
         if(reportDrop) reportDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
+        if(historyDrop) historyDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
     });
 
     // CRITICAL FIX: If a distributor's dropdown gets re-rendered during background cloud sync, we MUST re-select their ID.
@@ -1191,6 +1195,10 @@ async function loadStaffDropdowns() {
         issueDrop.value = currentUser.id;
         collectDrop.value = currentUser.id;
     }
+
+    // Default dates
+    let hMonth = document.getElementById('history-month');
+    if (hMonth && !hMonth.value) hMonth.value = getCurrentMonthString();
 
     // Also populate settings target if present
     let s = await db.settings.toCollection().first();
@@ -2143,4 +2151,135 @@ async function pullFromCloud() {
     } catch (err) {
         console.warn("Pull failed:", err.message);
     }
+}
+
+// --- History View Logic ---
+window.generateHistoryView = async function() {
+    const staffId = document.getElementById('history-staff').value;
+    const month = document.getElementById('history-month').value;
+    
+    if(!staffId || !month) {
+        return Swal.fire({ icon: 'warning', title: 'Missing Info', text: 'Please select a distributor and a month.', background: '#1e293b', color: '#fff'});
+    }
+
+    const staff = await db.staff.get(staffId);
+    if(!staff) return;
+
+    document.getElementById('history-title-name').innerText = staff.name + ' (' + staff.routeName + ')';
+    document.getElementById('history-title-month').innerText = 'System Records for: ' + month;
+
+    // Fetch records for month
+    const issues = await db.dailyIssues.where('staffId').equals(staffId).toArray();
+    const sales = await db.dailySales.where('staffId').equals(staffId).toArray();
+
+    const resultArea = document.getElementById('history-result-area');
+    const tbody = document.getElementById('history-tbody');
+    const tfoot = document.getElementById('history-tfoot');
+    tbody.innerHTML = '';
+    tfoot.innerHTML = '';
+
+    // Filter by month (YYYY-MM) and group by date
+    const monthlyIssues = issues.filter(r => r.date.startsWith(month));
+    const monthlySales = sales.filter(r => r.date.startsWith(month));
+
+    const allDates = new Set([...monthlyIssues.map(i => i.date), ...monthlySales.map(s => s.date)]);
+    const sortedDates = Array.from(allDates).sort();
+
+    if(sortedDates.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-5 text-center text-gray-400 italic">No activity recorded for this month.</td></tr>`;
+        resultArea.classList.remove('hidden');
+        return;
+    }
+
+    let grandTotalCardValue = 0;
+    let grandTotalReloadIssued = 0;
+    let grandTotalSales = 0;
+    let grandTotalComm = 0;
+    let grandTotalHandCash = 0;
+    let grandTotalShortage = 0;
+
+    sortedDates.forEach(date => {
+        const issue = monthlyIssues.find(i => i.date === date);
+        const sale = monthlySales.find(s => s.date === date);
+
+        // Issue Metrics
+        let cardFV = 0;
+        let reloadIssued = 0;
+        if(issue) {
+            // New items issued only (using totalIssuedValue could include roll-overs if we look at whole stock, 
+            // but for tracking history usually the whole day's stock *face value* is good, 
+            // but let's show what was dealt with that day based on what's available vs sold. Let's do raw Sales Data first)
+        }
+        
+        let saleAmt = 0;
+        let commAmt = 0;
+        let handAmt = 0;
+        let shortAmt = 0;
+
+        if (sale) {
+            saleAmt = (sale.soldCard48 * 48) + (sale.soldCard95 * 95) + (sale.soldCard96 * 96) + sale.soldReloadCash;
+            commAmt = sale.totalCommission || 0;
+            // Expected Shop commission estimation if totalCommission is global, or calculate exactly for shops:
+            const shopComm = (sale.soldCard48 * 2) + (sale.soldCard95 * 4) + (sale.soldCard96 * 4);
+            
+            handAmt = sale.handCash || 0;
+            shortAmt = sale.shortageAmt || 0;
+            
+            // Re-calculate how many cards in total FV was brought out that day
+            if (issue) {
+                cardFV = (issue.card48 * 48) + (issue.card95 * 95) + (issue.card96 * 96);
+                reloadIssued = issue.reloadCash;
+            }
+
+            grandTotalSales += saleAmt;
+            grandTotalComm += shopComm;
+            grandTotalHandCash += handAmt;
+            grandTotalShortage += shortAmt; // A true rolling sum or net shortage sum
+            grandTotalCardValue += cardFV;
+            grandTotalReloadIssued += reloadIssued;
+            
+            let shortClass = shortAmt > 0 ? 'text-red-400' : (shortAmt < 0 ? 'text-emerald-400' : 'text-gray-400');
+            
+            tbody.insertAdjacentHTML('beforeend', `
+                <tr class="hover:bg-slate-800/50 transition-colors">
+                    <td class="py-3 px-3 font-mono font-bold">${date}</td>
+                    <td class="py-3 px-3">${formatCurrency(cardFV)}</td>
+                    <td class="py-3 px-3 text-right">${formatCurrency(reloadIssued)}</td>
+                    <td class="py-3 px-3 text-right text-emerald-400 font-bold">${formatCurrency(saleAmt)}</td>
+                    <td class="py-3 px-3 text-right text-orange-400">${formatCurrency(shopComm)}</td>
+                    <td class="py-3 px-3 text-right text-blue-400 font-bold">${formatCurrency(handAmt)}</td>
+                    <td class="py-3 px-3 text-right ${shortClass} font-bold">${formatCurrency(Math.abs(shortAmt))} ${shortAmt > 0 ? '(S)' : shortAmt < 0 ? '(E)' : ''}</td>
+                </tr>
+            `);
+        } else if (issue && !sale) {
+             // Issued but not yet collected
+             cardFV = (issue.card48 * 48) + (issue.card95 * 95) + (issue.card96 * 96);
+             reloadIssued = issue.reloadCash;
+             tbody.insertAdjacentHTML('beforeend', `
+                <tr class="hover:bg-slate-800/50 transition-colors opacity-60">
+                    <td class="py-3 px-3 font-mono font-bold">${date}</td>
+                    <td class="py-3 px-3">${formatCurrency(cardFV)}</td>
+                    <td class="py-3 px-3 text-right">${formatCurrency(reloadIssued)}</td>
+                    <td colspan="4" class="py-3 px-3 text-center text-gray-500 italic">Day not settled yet</td>
+                </tr>
+            `);
+        }
+    });
+
+    const netShortage = grandTotalShortage;
+    const netClass = netShortage > 0 ? 'text-red-500' : (netShortage < 0 ? 'text-emerald-500' : 'text-gray-400');
+
+    tfoot.innerHTML = `
+        <tr>
+            <th class="py-3 px-3 text-right uppercase tracking-widest text-indigo-400 font-black">Month Total:</th>
+            <th class="py-3 px-3 text-gray-300">-</th>
+            <th class="py-3 px-3 text-right text-gray-300">-</th>
+            <th class="py-3 px-3 text-right text-emerald-400 font-black">${formatCurrency(grandTotalSales)}</th>
+            <th class="py-3 px-3 text-right text-orange-400 font-black">${formatCurrency(grandTotalComm)}</th>
+            <th class="py-3 px-3 text-right text-blue-400 font-black">${formatCurrency(grandTotalHandCash)}</th>
+            <th class="py-3 px-3 text-right ${netClass} font-black">${formatCurrency(Math.abs(netShortage))} ${netShortage > 0 ? '(S)' : netShortage < 0 ? '(E)' : ''}</th>
+        </tr>
+    `;
+
+    resultArea.classList.remove('hidden');
 }
