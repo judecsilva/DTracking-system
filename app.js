@@ -723,7 +723,12 @@ window.loadIssueForEdit = async function() {
     }
 
     try {
-        const record = await db.dailyIssues.where({date, staffId}).first();
+        let record = await db.dailyIssues.where({date, staffId}).first();
+        if(!record && !isNaN(staffId)) {
+            // Fallback for legacy numerical IDs synced from Supabase before the type enforcement fix
+            record = await db.dailyIssues.where({date, staffId: Number(staffId)}).first();
+        }
+        
         if (record) {
             document.getElementById('issue-new-c48').value = record.newC48 || 0;
             document.getElementById('issue-new-c95').value = record.newC95 || 0;
@@ -765,6 +770,10 @@ async function handleLoadExpectedData() {
 
     try {
         let issued = await db.dailyIssues.where({date, staffId}).first();
+        if(!issued && !isNaN(staffId)) {
+            issued = await db.dailyIssues.where({date, staffId: Number(staffId)}).first();
+        }
+        
         if(!issued) {
             Swal.fire({ icon: 'info', title: 'No Issued Stock', text: 'No stock was issued to this staff on selected date.', background: '#1e293b', color: '#fff' });
             document.getElementById('collection-details').classList.add('hidden');
@@ -785,11 +794,19 @@ async function handleLoadExpectedData() {
         ['sold-c48', 'sold-c95', 'sold-c96', 'sold-reload', 'collect-handcash'].forEach(id => document.getElementById(id).value = 0);
         
         // --- NEW: Load Previous Shortage ---
-        const lastSale = await db.dailySales
+        let lastSale = await db.dailySales
             .where('staffId').equals(staffId)
             .and(r => r.date < date)
             .sortBy('date')
             .then(results => results[results.length - 1]);
+            
+        if (!lastSale && !isNaN(staffId)) {
+            lastSale = await db.dailySales
+                .where('staffId').equals(Number(staffId))
+                .and(r => r.date < date)
+                .sortBy('date')
+                .then(results => results[results.length - 1]);
+        }
 
         previousShortage = 0;
         const pBadge = document.getElementById('prev-shortage-badge');
@@ -810,6 +827,9 @@ async function handleLoadExpectedData() {
         
         // Auto-load previously saved collection (for edit mode)
         let existingSale = await db.dailySales.where({date, staffId}).first();
+        if(!existingSale && !isNaN(staffId)) {
+           existingSale = await db.dailySales.where({date, staffId: Number(staffId)}).first();
+        }
         if(existingSale) {
             document.getElementById('sold-c48').value = existingSale.soldCard48 || 0;
             document.getElementById('sold-c95').value = existingSale.soldCard95 || 0;
@@ -2126,7 +2146,7 @@ async function pullFromCloud() {
         await db.dailyIssues.clear();
         if(issueData && issueData.length > 0) {
             await db.dailyIssues.bulkAdd(issueData.map(r => ({
-                id: r.id, staffId: r.staff_id, date: r.date, 
+                id: r.id, staffId: String(r.staff_id), date: r.date, 
                 card48: r.card48, card95: r.card95, card96: r.card96, 
                 reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value)
             })));
@@ -2135,7 +2155,7 @@ async function pullFromCloud() {
         await db.dailySales.clear();
         if(salesData && salesData.length > 0) {
             await db.dailySales.bulkAdd(salesData.map(r => ({
-                id: r.id, staffId: r.staff_id, date: r.date, 
+                id: r.id, staffId: String(r.staff_id), date: r.date, 
                 soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
                 soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
                 totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt)
