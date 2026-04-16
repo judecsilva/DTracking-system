@@ -1327,11 +1327,20 @@ async function loadPreviousBalances() {
 
     // Find the last SALES record (Evening collection) BEFORE the selected date
     // Note: We rollover the RETURNED items from the last settlement.
-    const lastSale = await db.dailySales
+    let lastSale = await db.dailySales
         .where('staffId').equals(staffId)
         .and(r => r.date < selectedDate)
         .sortBy('date')
         .then(results => results[results.length - 1]);
+
+    // Fallback for type mismatch in history rollover
+    if(!lastSale && !isNaN(staffId)) {
+        lastSale = await db.dailySales
+            .where('staffId').equals(Number(staffId))
+            .and(r => r.date < selectedDate)
+            .sortBy('date')
+            .then(results => results[results.length - 1]);
+    }
 
     if (lastSale) {
         document.getElementById('issue-prev-c48').value = lastSale.returnedCard48 || 0;
@@ -1596,18 +1605,23 @@ window.resetSystem = async function() {
                     
                     for (const tableName of tables) {
                         try {
-                            // Fetch all IDs for this table
-                            const { data: items, error: fetchErr } = await supabaseClient.from(tableName).select('id');
-                            if (fetchErr) {
-                                console.warn(`Cloud fetch failed for ${tableName}:`, fetchErr.message);
-                                // Try range delete as fallback
-                                await supabaseClient.from(tableName).delete().not('id', 'is', null);
-                            } else if (items && items.length > 0) {
-                                // Delete row by row to be absolutely sure
-                                for (const item of items) {
-                                    await supabaseClient.from(tableName).delete().eq('id', item.id);
+                            console.log(`Clearing cloud table ${tableName}...`);
+                            // Efficient mass delete: matching anything with id > 0 (or id not null)
+                            // Supabase requires a filter for delete, so .gt('id', 0) or .neq('id', 0) works.
+                            const { error: delErr } = await supabaseClient
+                                .from(tableName)
+                                .delete()
+                                .neq('id', -1); // Deletes all rows where ID is not -1 (all rows)
+                            
+                            if (delErr) {
+                                console.warn(`Cloud delete failed for ${tableName}:`, delErr.message);
+                                // Try fallback loop only if mass delete fails
+                                const { data: items } = await supabaseClient.from(tableName).select('id');
+                                if (items && items.length > 0) {
+                                    for (const item of items) {
+                                        await supabaseClient.from(tableName).delete().eq('id', item.id);
+                                    }
                                 }
-                                console.log(`Cloud table ${tableName} cleared row-by-row.`);
                             }
                         } catch (e) {
                             console.error(`Error clearing cloud table ${tableName}:`, e);
