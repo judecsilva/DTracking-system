@@ -645,7 +645,11 @@ async function handleIssueSubmit(e) {
     const totalIssuedValue = (n48 * 48) + (n95 * 95) + (n96 * 96) + nReload;
 
     try {
-        let existing = await db.dailyIssues.where({date: date, staffId: staffId}).first();
+        let existing = await db.dailyIssues.where({date, staffId}).first();
+        if(!existing && !isNaN(staffId)) {
+            existing = await db.dailyIssues.where({date, staffId: Number(staffId)}).first();
+        }
+        
         const data = {
             date, staffId, 
             card48: t48, card95: t95, card96: t96, reloadCash: tReload,
@@ -1006,6 +1010,10 @@ async function handleCollectionSubmit(e) {
 
     try {
         let existing = await db.dailySales.where({date, staffId}).first();
+        if(!existing && !isNaN(staffId)) {
+            existing = await db.dailySales.where({date, staffId: Number(staffId)}).first();
+        }
+        
         if(existing) { await db.dailySales.update(existing.id, data); }
         else { await db.dailySales.add(data); }
         
@@ -2337,6 +2345,10 @@ window.deleteHistoryRecord = async function(date, staffId) {
             
             await db.dailyIssues.where({date: date, staffId: staffId}).delete();
             await db.dailySales.where({date: date, staffId: staffId}).delete();
+            if(!isNaN(staffId)) {
+                await db.dailyIssues.where({date: date, staffId: Number(staffId)}).delete();
+                await db.dailySales.where({date: date, staffId: Number(staffId)}).delete();
+            }
             
             showToast('Day Record Deleted');
             generateHistoryView(); // refresh the table
@@ -2345,4 +2357,12 @@ window.deleteHistoryRecord = async function(date, staffId) {
             Swal.fire({ icon: 'error', title: 'Delete Failed', text: err.message, background: '#1e293b', color: '#fff' });
         }
     }
+}
+
+window.printHistoryReport = function() {
+    document.body.classList.add('print-history');
+    window.print();
+    setTimeout(() => {
+        document.body.classList.remove('print-history');
+    }, 1000);
 }

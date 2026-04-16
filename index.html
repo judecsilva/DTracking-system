@@ -1301,6 +1301,9 @@
                                 <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name</h3>
                                 <p class="text-xs text-gray-400" id="history-title-month">Month</p>
                             </div>
+                            <button onclick="printHistoryReport()" class="btn-secondary py-1.5 px-4 text-xs no-print">
+                                <i class="fas fa-print mr-1"></i> Print / PDF
+                            </button>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-xs">
@@ -1363,9 +1366,12 @@
                     footer,
                     .no-print,
                     .swal2-container,
-                    #app-container>*:not(.flex-1),
-                    #app-container .flex-1>*:not(#reports),
-                    #reports>*:not(#report-printable-area) {
+                    body:not(.print-history) #app-container>*:not(.flex-1),
+                    body:not(.print-history) #app-container .flex-1>*:not(#reports),
+                    body:not(.print-history) #reports>*:not(#report-printable-area),
+                    body.print-history #app-container>*:not(.flex-1),
+                    body.print-history #app-container .flex-1>*:not(#history),
+                    body.print-history #history>*:not(#history-result-area) {
                         display: none !important;
                     }
 
@@ -1373,8 +1379,10 @@
                     #app-content,
                     #app-container,
                     .flex-1,
-                    #reports,
-                    #report-printable-area {
+                    body:not(.print-history) #reports,
+                    body:not(.print-history) #report-printable-area,
+                    body.print-history #history,
+                    body.print-history #history-result-area {
                         display: block !important;
                         visibility: visible !important;
                         opacity: 1 !important;
@@ -1391,7 +1399,8 @@
                     }
 
                     /* Force all text inside the report to be black */
-                    #report-printable-area * {
+                    body:not(.print-history) #report-printable-area *,
+                    body.print-history #history-result-area * {
                         color: black !important;
                         background: transparent !important;
                         visibility: visible !important;
