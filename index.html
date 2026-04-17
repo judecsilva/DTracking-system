@@ -228,7 +228,7 @@
             <form id="login-form" class="space-y-4 text-left">
                 <div>
                     <label class="block text-sm font-medium mb-1 text-gray-400">Phone Number (Username)</label>
-                    <input type="text" id="login-username" class="input-field" placeholder="e.g. 0771234567" required>
+                    <input type="tel" id="login-username" class="input-field" placeholder="07XXXXXXXX" inputmode="numeric" required>
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1 text-gray-400">Password</label>
@@ -236,6 +236,7 @@
                 </div>
                 <button type="submit" class="btn-primary w-full py-3 text-lg mt-2">Login</button>
             </form>
+            <p class="text-[10px] text-gray-500 mt-4" id="login-sync-status"><i class="fas fa-history mr-1"></i> Data automatically synced from cloud</p>
             <p class="text-xs text-gray-600">Secure Professional Portal</p>
         </div>
     </div>

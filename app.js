@@ -33,9 +33,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
 
     // --- Pull data from Cloud on startup ---
-    if(currentUser) {
-        pullFromCloud();
-    }
+    // We pull even if not logged in so the distributor/staff list is available for login on new devices
+    pullFromCloud();
 
     // --- Automatic Sync Triggers ---
     window.addEventListener('online', () => {
@@ -1131,8 +1130,8 @@ function setupEventListeners() {
     // Login Handler
     document.getElementById('login-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const user = document.getElementById('login-username').value;
-        const pass = document.getElementById('login-password').value;
+        const user = document.getElementById('login-username').value.trim();
+        const pass = document.getElementById('login-password').value.trim();
 
         // Admin check
         let settings = await db.settings.toCollection().first();
@@ -2208,17 +2207,22 @@ async function manualCloudSync() {
 async function pullFromCloud() {
     if (typeof supabaseClient === 'undefined') return;
     
-    // Show a subtle syncing indicator
-    const syncToast = Swal.mixin({
-        toast: true,
-        position: 'top-end',
-        showConfirmButton: false,
-        timer: 1500,
-        timerProgressBar: true,
-        background: '#1e293b',
-        color: '#fff'
-    });
-    syncToast.fire({ icon: 'info', title: 'Cloud Syncing...' });
+    const statusEl = document.getElementById('login-sync-status');
+    if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Syncing security data...';
+
+    // Only show toast if already logged in (don't clutter login screen)
+    if (currentUser) {
+        const syncToast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 1500,
+            timerProgressBar: true,
+            background: '#1e293b',
+            color: '#fff'
+        });
+        syncToast.fire({ icon: 'info', title: 'Cloud Syncing...' });
+    }
 
     console.log("Starting parallel cloud data pull...");
 
@@ -2291,6 +2295,8 @@ async function pullFromCloud() {
         }
 
         console.log("Parallel Cloud Pull Complete");
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Security data ready';
+        
         updateDashboardCard();
         loadStaffDropdowns();
         renderStaffTable();
@@ -2298,6 +2304,7 @@ async function pullFromCloud() {
 
     } catch (err) {
         console.warn("Pull failed:", err.message);
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode Ready';
     }
 }
 
