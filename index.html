@@ -343,6 +343,12 @@
                             <p class="text-3xl font-bold mt-2 text-blue-400" id="metric-today-target">Rs. 0</p>
                         </div>
                         <div
+                            class="glass-panel p-6 border-l-4 border-l-red-500 hover:bg-slate-800/80 transition-colors">
+                            <h3 class="text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Balance Target
+                            </h3>
+                            <p class="text-3xl font-bold mt-2 text-red-500" id="metric-main-balance-target">Rs. 0</p>
+                        </div>
+                        <div
                             class="glass-panel p-6 border-l-4 border-l-pink-500 hover:bg-slate-800/80 transition-colors">
                             <h3 class="text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Month Face Value
                             </h3>
@@ -434,8 +440,9 @@
                                         <tr>
                                             <th class="py-4 px-6">Distributor Info</th>
                                             <th class="py-4 px-4 text-center">Monthly Target</th>
-                                            <th class="py-4 px-4 text-center">Dynamic Day Target</th>
+                                            <th class="py-4 px-4 text-center">Today Target</th>
                                             <th class="py-4 px-4 text-center">Achieved (MTD)</th>
+                                            <th class="py-4 px-4 text-center">Balance Target</th>
                                             <th class="py-4 px-4 text-center">Current Balance</th>
                                             <th class="py-4 px-4 text-center">Face Value</th>
                                             <th class="py-4 px-4 text-center">MTD Progress</th>
@@ -475,6 +482,11 @@
                                     To Date</p>
                                 <h4 class="text-2xl font-black text-white personal-sales">Rs. 0.00</h4>
                             </div>
+                            <div class="glass-panel p-5 bg-red-500/5 border-red-500/20">
+                                <p class="text-xs text-red-400 font-black mb-1 uppercase tracking-widest">My Balance
+                                    Target</p>
+                                <h4 class="text-2xl font-black text-white personal-balance">Rs. 0.00</h4>
+                            </div>
                         </div>
                     </div>
 
@@ -488,8 +500,9 @@
                                         <tr>
                                             <th class="py-4 px-6">Distributor Status</th>
                                             <th class="py-4 px-4 text-center">Monthly Target</th>
-                                            <th class="py-4 px-4 text-center">Dynamic Day Target</th>
+                                            <th class="py-4 px-4 text-center">Today Target</th>
                                             <th class="py-4 px-4 text-center">Achieved (MTD)</th>
+                                            <th class="py-4 px-4 text-center">Balance</th>
                                             <th class="py-4 px-4 text-center">Face Value</th>
                                             <th class="py-4 px-4 text-center">MTD Progress</th>
                                         </tr>
@@ -543,6 +556,11 @@
                                     <p class="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">
                                         Expected Day Target</p>
                                     <p class="text-lg font-black text-white" id="perf-day-target">Rs. 0</p>
+                                </div>
+                                <div class="border-r border-slate-700/50 px-4">
+                                    <p class="text-[9px] font-black text-red-500 uppercase tracking-widest mb-1">
+                                        Balance Target</p>
+                                    <p class="text-lg font-black text-white" id="perf-balance-target">Rs. 0</p>
                                 </div>
                                 <div class="border-r border-slate-700/50 px-4">
                                     <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">
@@ -744,6 +762,10 @@
                                 <p class="text-xs text-emerald-400 uppercase font-black mb-1">My Total Monthly Sales</p>
                                 <h4 class="text-xl font-black text-white personal-sales">Rs. 0.00</h4>
                             </div>
+                            <div class="glass-panel p-4 bg-red-900/10 border-red-500/20">
+                                <p class="text-xs text-red-400 uppercase font-black mb-1">My Balance Target</p>
+                                <h4 class="text-xl font-black text-white personal-balance">Rs. 0.00</h4>
+                            </div>
                         </div>
                     </div>
 
@@ -757,8 +779,9 @@
                                         <tr>
                                             <th class="py-4 px-6">Distributor Status</th>
                                             <th class="py-4 px-4 text-center">Monthly Target</th>
-                                            <th class="py-4 px-4 text-center">Dynamic Day Target</th>
+                                            <th class="py-4 px-4 text-center">Today Target</th>
                                             <th class="py-4 px-4 text-center">Achieved (MTD)</th>
+                                            <th class="py-4 px-4 text-center">Balance</th>
                                             <th class="py-4 px-4 text-center">Face Value</th>
                                             <th class="py-4 px-4 text-center">MTD Progress</th>
                                         </tr>

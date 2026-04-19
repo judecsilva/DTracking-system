@@ -308,6 +308,7 @@ async function updateDashboardCard() {
     
     const remainingTarget = (monthlyTarget - totalSales) > 0 ? (monthlyTarget - totalSales) : 0;
     const todayTarget = remainingTarget / daysLeft;
+    const mainBalanceTarget = (monthlyTarget - totalSales) > 0 ? (monthlyTarget - totalSales) : 0;
     
     // 4. Progress
     let perc = (totalSales / (monthlyTarget || 1)) * 100;
@@ -331,6 +332,9 @@ async function updateDashboardCard() {
     if(targetEl) targetEl.innerText = formatCurrency(monthlyTarget);
     if(salesEl) salesEl.innerText = formatCurrency(totalSales);
     if(todayTargetEl) todayTargetEl.innerText = formatCurrency(todayTarget);
+    if(document.getElementById('metric-main-balance-target')) {
+        document.getElementById('metric-main-balance-target').innerText = formatCurrency(mainBalanceTarget);
+    }
     if(monthFaceEl) monthFaceEl.innerText = formatCurrency(monthFaceValue);
     if(progressTarget) progressTarget.innerText = formatCurrency(monthlyTarget);
     
@@ -351,6 +355,7 @@ async function updateDashboardCard() {
         
         document.querySelectorAll('.personal-target').forEach(el => el.innerText = formatCurrency(monthlyTarget));
         document.querySelectorAll('.personal-sales').forEach(el => el.innerText = formatCurrency(totalSales));
+        document.querySelectorAll('.personal-balance').forEach(el => el.innerText = formatCurrency(mainBalanceTarget));
 
         // NEW: Render the Performance Table Row for this Distributor
         const perfRowHtml = `
@@ -364,10 +369,11 @@ async function updateDashboardCard() {
                     <div class="text-sm font-bold text-gray-300 font-mono">${formatCurrency(monthlyTarget)}</div>
                 </td>
                 <td class="py-6 px-4 text-center">
-                    <div class="text-[9px] text-orange-400 font-black uppercase mb-1">Dynamic Today Target</div>
+                    <div class="text-[9px] text-orange-400 font-black uppercase mb-1">Today Target</div>
                     <div class="text-sm font-black text-white font-mono">${formatCurrency(todayTarget)}</div>
                 </td>
                 <td class="py-6 px-4 text-center text-base font-black text-emerald-400 font-mono">${formatCurrency(totalSales)}</td>
+                <td class="py-6 px-4 text-center text-base font-black text-red-500 font-mono">${formatCurrency(mainBalanceTarget)}</td>
                 <td class="py-6 px-4 text-center text-base font-black text-pink-500 font-mono">${formatCurrency(monthFaceValue)}</td>
                 <td class="py-6 px-4 text-center">
                     <div class="flex items-center justify-center space-x-3">
@@ -446,6 +452,7 @@ async function renderDistributorStats() {
         if(daysLeft < 1) daysLeft = 1;
         const remainingTarget = (target - totalS) > 0 ? (target - totalS) : 0;
         const dynamicDayTarget = remainingTarget / daysLeft;
+        const balanceTarget = (target - totalS) > 0 ? (target - totalS) : 0;
         
         const lastRec = sales.sort((a,b) => b.date.localeCompare(a.date))[0];
         const sAmt = lastRec ? Number(lastRec.shortageAmt || 0) : 0;
@@ -468,6 +475,7 @@ async function renderDistributorStats() {
                     <div class="text-xs font-black text-white font-mono">${formatCurrency(dynamicDayTarget)}</div>
                 </td>
                 <td class="py-4 px-4 text-center text-sm font-black text-emerald-400 font-mono">${formatCurrency(totalS)}</td>
+                <td class="py-4 px-4 text-center text-sm font-black text-red-500 font-mono">${formatCurrency(balanceTarget)}</td>
                 <td class="py-4 px-4 text-center text-[11px] font-black ${bColor} font-mono">${bLabel}</td>
                 <td class="py-4 px-4 text-center text-sm font-black text-pink-500 font-mono">${formatCurrency(totalS + totalC)}</td>
                 <td class="py-4 px-4 text-center">
@@ -2035,6 +2043,7 @@ async function updateStaffPerformanceDisplay(staffId) {
             perfCard.classList.remove('hidden');
             document.getElementById('perf-monthly-target').innerText = formatCurrency(monthlyTarget);
             document.getElementById('perf-day-target').innerText = formatCurrency(dailyTarget);
+            document.getElementById('perf-balance-target').innerText = formatCurrency(remainingTarget);
             document.getElementById('perf-achieved').innerText = formatCurrency(monthAchieved);
             document.getElementById('perf-percent').innerText = `${progress.toFixed(1)}%`;
             document.getElementById('perf-bar').style.width = `${Math.min(progress, 100)}%`;
