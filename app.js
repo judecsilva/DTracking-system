@@ -199,13 +199,14 @@ function switchTab(tabId) {
     // Refresh data if switching to overview
     if(tabId === 'overview') updateDashboardCard();
 
-    // Reset Issue form when entering for Admin
-    if(tabId === 'issue' && currentUser.role === 'admin') {
-        const issueStaff = document.getElementById('issue-staff');
-        if(issueStaff) {
-            issueStaff.value = "";
-            loadPreviousBalances();
+    // Reset Issue form when entering
+    if(tabId === 'issue') {
+        if(currentUser.role === 'admin') {
+            const issueStaff = document.getElementById('issue-staff');
+            if(issueStaff) issueStaff.value = "";
         }
+        // Universal reset: Clear form values and reload previous balances
+        if(typeof loadPreviousBalances === 'function') loadPreviousBalances();
     }
     
     // Reset History view when entering for Admin
@@ -216,10 +217,13 @@ function switchTab(tabId) {
         if(historyResult) historyResult.classList.add('hidden');
     }
     
-    // Reset Collection view when entering for Admin
-    if(tabId === 'collection' && currentUser.role === 'admin') {
-        const collectStaff = document.getElementById('collect-staff');
-        if(collectStaff) collectStaff.value = "";
+    // Reset Collection view when entering
+    if(tabId === 'collection') {
+        if(currentUser.role === 'admin') {
+            const collectStaff = document.getElementById('collect-staff');
+            if(collectStaff) collectStaff.value = "";
+        }
+        // Universal clear
         if(typeof clearCollectionForm === 'function') clearCollectionForm();
     }
 
@@ -614,14 +618,8 @@ async function updatePerformanceChart(monthSales, monthlyTarget, workingDays) {
 
 // --- Issue Logic ---
 function calculateIssueTotal() {
-    const p48 = Number(document.getElementById('issue-prev-c48').value) || 0;
-    const n48 = Number(document.getElementById('issue-new-c48').value) || 0;
-    const p95 = Number(document.getElementById('issue-prev-c95').value) || 0;
-    const n95 = Number(document.getElementById('issue-new-c95').value) || 0;
-    const p96 = Number(document.getElementById('issue-prev-c96').value) || 0;
-    const n96 = Number(document.getElementById('issue-new-c96').value) || 0;
-    const pReload = Number(document.getElementById('issue-prev-reload').value) || 0;
-    const nReload = Number(document.getElementById('issue-new-reload').value) || 0;
+    const pReload = parseFloat(document.getElementById('issue-prev-reload').value) || 0;
+    const nReload = parseFloat(document.getElementById('issue-new-reload').value) || 0;
 
     const t48 = p48 + n48;
     const t95 = p95 + n95;
@@ -665,15 +663,15 @@ async function handleIssueSubmit(e) {
         return;
     }
 
-    const n48 = Number(document.getElementById('issue-new-c48').value) || 0;
-    const n95 = Number(document.getElementById('issue-new-c95').value) || 0;
-    const n96 = Number(document.getElementById('issue-new-c96').value) || 0;
-    const nReload = Number(document.getElementById('issue-new-reload').value) || 0;
+    const n48 = parseFloat(document.getElementById('issue-new-c48').value) || 0;
+    const n95 = parseFloat(document.getElementById('issue-new-c95').value) || 0;
+    const n96 = parseFloat(document.getElementById('issue-new-c96').value) || 0;
+    const nReload = parseFloat(document.getElementById('issue-new-reload').value) || 0;
 
-    const p48 = Number(document.getElementById('issue-prev-c48').value) || 0;
-    const p95 = Number(document.getElementById('issue-prev-c95').value) || 0;
-    const p96 = Number(document.getElementById('issue-prev-c96').value) || 0;
-    const pReload = Number(document.getElementById('issue-prev-reload').value) || 0;
+    const p48 = parseFloat(document.getElementById('issue-prev-c48').value) || 0;
+    const p95 = parseFloat(document.getElementById('issue-prev-c95').value) || 0;
+    const p96 = parseFloat(document.getElementById('issue-prev-c96').value) || 0;
+    const pReload = parseFloat(document.getElementById('issue-prev-reload').value) || 0;
 
     const t48 = p48 + n48;
     const t95 = p95 + n95;
@@ -859,12 +857,15 @@ async function handleLoadExpectedData() {
         currentIssuedData = issued;
         document.getElementById('collection-details').classList.remove('hidden');
         
+        // Ensure strictly numeric values
+        const totalReload = parseFloat(issued.reloadCash || 0);
+
         // Populate Availabilities
-        document.getElementById('avail-c48').value = issued.card48;
-        document.getElementById('avail-c95').value = issued.card95;
-        document.getElementById('avail-c96').value = issued.card96;
-        document.getElementById('avail-reload-disp').innerText = `Stock: Rs. ${issued.reloadCash.toLocaleString()}`;
-        document.getElementById('avail-reload-val').value = issued.reloadCash;
+        document.getElementById('avail-c48').value = parseFloat(issued.card48 || 0);
+        document.getElementById('avail-c95').value = parseFloat(issued.card95 || 0);
+        document.getElementById('avail-c96').value = parseFloat(issued.card96 || 0);
+        document.getElementById('avail-reload-disp').innerText = `Stock: Rs. ${totalReload.toLocaleString()}`;
+        document.getElementById('avail-reload-val').value = totalReload;
 
         // Reset fields
         ['sold-c48', 'sold-c95', 'sold-c96', 'sold-reload', 'collect-handcash'].forEach(id => document.getElementById(id).value = 0);
