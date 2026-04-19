@@ -618,6 +618,12 @@ async function updatePerformanceChart(monthSales, monthlyTarget, workingDays) {
 
 // --- Issue Logic ---
 function calculateIssueTotal() {
+    const p48 = parseFloat(document.getElementById('issue-prev-c48').value) || 0;
+    const n48 = parseFloat(document.getElementById('issue-new-c48').value) || 0;
+    const p95 = parseFloat(document.getElementById('issue-prev-c95').value) || 0;
+    const n95 = parseFloat(document.getElementById('issue-new-c95').value) || 0;
+    const p96 = parseFloat(document.getElementById('issue-prev-c96').value) || 0;
+    const n96 = parseFloat(document.getElementById('issue-new-c96').value) || 0;
     const pReload = parseFloat(document.getElementById('issue-prev-reload').value) || 0;
     const nReload = parseFloat(document.getElementById('issue-new-reload').value) || 0;
 
