@@ -1124,7 +1124,11 @@ async function handleCollectionSubmit(e) {
             sold_reload_cash: data.soldReloadCash,
             hand_cash: data.handCash,
             total_commission: data.totalCommission,
-            shortage_amt: data.shortageAmt
+            shortage_amt: data.shortageAmt,
+            returned_card48: data.returnedCard48,
+            returned_card95: data.returnedCard95,
+            returned_card96: data.returnedCard96,
+            avail_reload: data.availReload
         }, { staff_id: data.staffId, date: data.date });
 
     } catch(err) {
@@ -2186,9 +2190,12 @@ async function manualCloudSync() {
         const sales = await db.dailySales.toArray();
         for(let r of sales) {
             await syncToCloud('daily_sales', {
-                staff_id: r.staffId, date: r.date, sold_card48: r.soldCard48, sold_card95: r.soldCard95, 
-                sold_card96: r.soldCard96, sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash, 
-                total_commission: r.totalCommission, shortage_amt: r.shortageAmt
+                staff_id: r.staffId, date: r.date, 
+                sold_card48: r.soldCard48, sold_card95: r.soldCard95, sold_card96: r.soldCard96, 
+                sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash, 
+                total_commission: r.totalCommission, shortage_amt: r.shortageAmt,
+                returned_card48: r.returnedCard48, returned_card95: r.returnedCard95, returned_card96: r.returnedCard96,
+                avail_reload: r.availReload
             }, { staff_id: r.staffId, date: r.date });
         }
 
@@ -2285,14 +2292,14 @@ async function pullFromCloud() {
             })));
         }
 
-        if(salesData && salesData.length > 0) {
             await db.dailySales.bulkPut(salesData.map(r => ({
                 id: r.id, staffId: String(r.staff_id), date: r.date, 
                 soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
                 soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
-                totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt)
+                totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
+                returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
+                availReload: r.avail_reload
             })));
-        }
 
         console.log("Parallel Cloud Pull Complete");
         if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Security data ready';
