@@ -1906,10 +1906,26 @@ async function renderFullStaffSummary(monthStr, container) {
 }
 
 async function renderSingleStaffHistory(monthStr, staffId, container) {
-    const records = await db.dailySales
-        .where('staffId').equals(staffId)
-        .filter(r => r.date.startsWith(monthStr))
-        .toArray();
+    // Fetch all records for this staff (considering both string and number ID types)
+    let allRecords = await db.dailySales.where('staffId').equals(staffId).toArray();
+    if(!isNaN(staffId)) {
+        const numRecords = await db.dailySales.where('staffId').equals(Number(staffId)).toArray();
+        // Merge and deduplicate by internal ID to avoid double-counting if types match
+        const seenIds = new Set(allRecords.map(r => r.id));
+        numRecords.forEach(r => {
+            if(!seenIds.has(r.id)) allRecords.push(r);
+        });
+    }
+
+    // Filter by month and Deduplicate by date (keep only the latest record per day)
+    const recordsMap = new Map();
+    allRecords.filter(r => r.date.startsWith(monthStr)).forEach(r => {
+        if (!recordsMap.has(r.date) || r.id > recordsMap.get(r.date).id) {
+            recordsMap.set(r.date, r);
+        }
+    });
+
+    const records = Array.from(recordsMap.values());
 
     // PERFORMANCE SUMMARY LOGIC
     let totalSales = 0, totalCardsVal = 0, totalReloadVal = 0, totalComm = 0;
