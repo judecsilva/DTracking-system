@@ -2187,14 +2187,30 @@ async function manualCloudSync() {
         }
 
         // 3. Sync Sales
-        const sales = await db.dailySales.toArray();
+        let sales = await db.dailySales.toArray();
         for(let r of sales) {
+            // REPAIR: If rollover data is missing locally, try to reconstruct it before syncing
+            if (r.returnedCard48 === undefined || r.returnedCard48 === null) {
+                let matchingIssue = await db.dailyIssues.where('[date+staffId]').equals([r.date, r.staffId]).first();
+                if(!matchingIssue && !isNaN(r.staffId)) {
+                    matchingIssue = await db.dailyIssues.where('[date+staffId]').equals([r.date, Number(r.staffId)]).first();
+                }
+                
+                if (matchingIssue) {
+                    r.returnedCard48 = (matchingIssue.card48 || 0) - (r.soldCard48 || 0);
+                    r.returnedCard95 = (matchingIssue.card95 || 0) - (r.soldCard95 || 0);
+                    r.returnedCard96 = (matchingIssue.card96 || 0) - (r.soldCard96 || 0);
+                    r.availReload = Number(matchingIssue.reloadCash || 0);
+                    await db.dailySales.update(r.id, r);
+                }
+            }
+
             await syncToCloud('daily_sales', {
                 staff_id: r.staffId, date: r.date, 
                 sold_card48: r.soldCard48, sold_card95: r.soldCard95, sold_card96: r.soldCard96, 
                 sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash, 
                 total_commission: r.totalCommission, shortage_amt: r.shortageAmt,
-                returned_card48: r.returnedCard48, returned_card95: r.returnedCard95, returned_card96: r.returnedCard96,
+                returned_card48: r.returnedCard48, returned_card95: r.returnedCard95, returned_card96: r.returned_card96,
                 avail_reload: r.availReload
             }, { staff_id: r.staffId, date: r.date });
         }
@@ -2292,14 +2308,32 @@ async function pullFromCloud() {
             })));
         }
 
-            await db.dailySales.bulkPut(salesData.map(r => ({
+        if(salesData && salesData.length > 0) {
+            const mappedSales = salesData.map(r => ({
                 id: r.id, staffId: String(r.staff_id), date: r.date, 
                 soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
                 soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
                 totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
                 returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
                 availReload: r.avail_reload
-            })));
+            }));
+
+            // AUTO-REPAIR: If a pulled sales record is missing rollover data, reconstruct it from cloud's issueData
+            for (let s of mappedSales) {
+                if (s.returnedCard48 === undefined || s.returnedCard48 === null) {
+                    const match = issueData.find(i => String(i.staff_id) === s.staffId && i.date === s.date);
+                    if (match) {
+                        s.returnedCard48 = (match.card48 || 0) - (s.soldCard48 || 0);
+                        s.returnedCard95 = (match.card95 || 0) - (s.soldCard95 || 0);
+                        s.returnedCard96 = (match.card96 || 0) - (s.soldCard96 || 0);
+                        s.availReload = Number(match.reload_cash || 0);
+                        // We don't await the sync back here to avoid blocking UI, but it will sync on next manual sync or edit
+                    }
+                }
+            }
+
+            await db.dailySales.bulkPut(mappedSales);
+        }
 
         console.log("Parallel Cloud Pull Complete");
         if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Security data ready';
