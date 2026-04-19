@@ -1,10 +1,10 @@
 // --- Database Configuration (Dexie) ---
 const db = new Dexie("DistributionDB");
-db.version(3).stores({
-    settings: '++id, targetAmount, adminPassword',
-    staff: '++id, name, routeName, phone, password',
-    dailyIssues: '++id, staffId, date, [date+staffId]',
-    dailySales: '++id, staffId, date, [date+staffId]'
+db.version(4).stores({
+    settings: 'id, synced',
+    staff: 'id, phone, synced',
+    dailyIssues: '++id, staffId, date, synced, [date+staffId]',
+    dailySales: '++id, staffId, date, synced, [date+staffId]'
 });
 
 let currentUser = JSON.parse(localStorage.getItem('crdms_user') || 'null');
@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Automatic Sync Triggers ---
     window.addEventListener('online', () => {
         console.log("Internet restored. Syncing...");
+        pushPendingToCloud();
         pullFromCloud();
     });
 
@@ -683,19 +684,16 @@ async function handleIssueSubmit(e) {
     const totalIssuedValue = (n48 * 48) + (n95 * 95) + (n96 * 96) + nReload;
 
     try {
-        let existing = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
-        if(!existing && !isNaN(staffId)) {
-            existing = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
-        }
-        
         const data = {
-            date, staffId, 
+            date, staffId: String(staffId), 
             card48: t48, card95: t95, card96: t96, reloadCash: tReload,
             newC48: n48, newC95: n95, newC96: n96, newReload: nReload,
             prevC48: p48, prevC95: p95, prevC96: p96, prevReload: pReload,
-            totalIssuedValue 
+            totalIssuedValue,
+            synced: 0 // Local first
         };
 
+        let recordId;
         if(existing) {
             let res = await Swal.fire({
                 title: 'Overwrite Issue?',
@@ -707,25 +705,24 @@ async function handleIssueSubmit(e) {
             });
             if(!res.isConfirmed) return;
             await db.dailyIssues.update(existing.id, data);
+            recordId = existing.id;
         } else {
-            await db.dailyIssues.add(data);
+            recordId = await db.dailyIssues.add(data);
         }
         
         showToast('Stock Issued Successfully');
         
-        // Reset "New" fields
+        // Reset fields...
         ['issue-new-c48', 'issue-new-c95', 'issue-new-c96', 'issue-new-reload'].forEach(id => {
             document.getElementById(id).value = 0;
         });
 
-        // For Admin: Reset staff selection and "Previous" fields
         if(currentUser.role === 'admin') {
             document.getElementById('issue-staff').value = "";
             ['issue-prev-c48', 'issue-prev-c95', 'issue-prev-c96', 'issue-prev-reload', 'issue-new-c48', 'issue-new-c95', 'issue-new-c96', 'issue-new-reload'].forEach(id => {
                 const el = document.getElementById(id);
                 if(el) el.value = 0;
             });
-            // Clear shortage/excess badge
             const cashWrap = document.getElementById('issue-prev-cash-wrap');
             if(cashWrap) cashWrap.classList.add('hidden');
         }
@@ -736,7 +733,7 @@ async function handleIssueSubmit(e) {
         updateDashboardCard();
 
         // --- Online Sync ---
-        syncToCloud('daily_issues', {
+        await syncToCloud('daily_issues', {
             staff_id: data.staffId,
             date: data.date,
             card48: data.card48,
@@ -744,7 +741,7 @@ async function handleIssueSubmit(e) {
             card96: data.card96,
             reload_cash: data.reloadCash,
             total_issued_value: data.totalIssuedValue
-        }, { staff_id: data.staffId, date: data.date });
+        }, { staff_id: data.staffId, date: data.date }, 'dailyIssues', recordId);
 
     } catch(err) {
         console.error(err);
@@ -1075,25 +1072,28 @@ async function handleCollectionSubmit(e) {
     else if (shortageToday < -0.01) diffStatus = 'EXCESS';
 
     const data = {
-        date, staffId, 
+        date, staffId: String(staffId), 
         soldCard48, soldCard95, soldCard96, soldReloadCash,
         returnedCard48, returnedCard95, returnedCard96,
-        handCash, expectedCash: todayExpected, // Record today's target
+        handCash, expectedCash: todayExpected, 
         totalCommission,
         availReload,
-        shortageAmt: shortageToday, // Positive for shortage, Negative for excess
+        shortageAmt: shortageToday,
         currentDiff: Math.abs(shortageToday),
-        diffStatus: diffStatus
+        diffStatus: diffStatus,
+        synced: 0
     };
 
     try {
-        let existing = await db.dailySales.where('[date+staffId]').equals([date, staffId]).first();
-        if(!existing && !isNaN(staffId)) {
-            existing = await db.dailySales.where('[date+staffId]').equals([date, Number(staffId)]).first();
-        }
+        let existing = await db.dailySales.where('[date+staffId]').equals([date, data.staffId]).first();
         
-        if(existing) { await db.dailySales.update(existing.id, data); }
-        else { await db.dailySales.add(data); }
+        let recordId;
+        if(existing) { 
+            await db.dailySales.update(existing.id, data); 
+            recordId = existing.id;
+        } else { 
+            recordId = await db.dailySales.add(data); 
+        }
         
         Swal.fire({
             title: 'Success!',
@@ -1115,7 +1115,7 @@ async function handleCollectionSubmit(e) {
         updateDashboardCard();
 
         // --- Online Sync ---
-        syncToCloud('daily_sales', {
+        await syncToCloud('daily_sales', {
             staff_id: data.staffId,
             date: data.date,
             sold_card48: data.soldCard48,
@@ -1125,7 +1125,7 @@ async function handleCollectionSubmit(e) {
             hand_cash: data.handCash,
             total_commission: data.totalCommission,
             shortage_amt: data.shortageAmt
-        }, { staff_id: data.staffId, date: data.date });
+        }, { staff_id: data.staffId, date: data.date }, 'dailySales', recordId);
 
     } catch(err) {
         console.error(err);
@@ -1155,7 +1155,7 @@ function setupEventListeners() {
         // Staff check
         let staff = await db.staff.where('phone').equals(user).first();
         if(staff && staff.password === pass) {
-            currentUser = { id: staff.id, name: staff.name, role: 'distributor' };
+            currentUser = { id: String(staff.id), name: staff.name, role: 'distributor' };
             localStorage.setItem('crdms_user', JSON.stringify(currentUser));
             showApp();
         } else {
@@ -1163,7 +1163,7 @@ function setupEventListeners() {
         }
     });
 
-    // Sets & Target
+    // Staff & Target
     document.getElementById('staff-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         let idStr = document.getElementById('staff-edit-id').value;
@@ -1175,6 +1175,9 @@ function setupEventListeners() {
         const target = Number(document.getElementById('staff-target').value) || 0;
         const joinedDate = document.getElementById('staff-joined').value;
         
+        const staffData = { name, routeName, phone, password, target, joinedDate, synced: 0 };
+
+        let recordId;
         if(id !== '') {
             // Check if phone number is taken by ANOTHER staff member
             let conflict = await db.staff
@@ -1187,7 +1190,8 @@ function setupEventListeners() {
                 return;
             }
 
-            await db.staff.update(id, {name, routeName, phone, password, target, joinedDate});
+            await db.staff.update(id, staffData);
+            recordId = id;
             showToast('Staff Updated');
             cancelStaffEdit();
         } else {
@@ -1198,7 +1202,7 @@ function setupEventListeners() {
                 return;
             }
             
-            // Auto-generate a Sequential System ID (e.g., DS-0001)
+            // Auto-generate a Sequential System ID
             const allStaff = await db.staff.toArray();
             let maxId = 0;
             allStaff.forEach(s => {
@@ -1208,16 +1212,17 @@ function setupEventListeners() {
                 }
             });
             const sysId = 'DS-' + String(maxId + 1).padStart(4, '0');
+            staffData.sysId = sysId;
             
-            await db.staff.add({name, routeName, phone, password, target, joinedDate, sysId});
+            recordId = await db.staff.add(staffData);
             document.getElementById('staff-form').reset();
             showToast('Staff Added');
         }
         
         // --- Online Sync Staff ---
-        const sList = await db.staff.toArray();
-        for(let s of sList) {
-            syncToCloud('staff', {
+        const s = await db.staff.get(recordId);
+        if(s) {
+            await syncToCloud('staff', {
                 name: s.name,
                 route_name: s.routeName,
                 phone: s.phone,
@@ -1225,7 +1230,7 @@ function setupEventListeners() {
                 target: s.target,
                 joined_date: s.joinedDate,
                 sys_id: s.sysId
-            }, { phone: s.phone });
+            }, { phone: s.phone }, 'staff', s.id);
         }
 
         loadStaffDropdowns();
@@ -1238,22 +1243,24 @@ function setupEventListeners() {
         const workingDays = Number(document.getElementById('setting-days').value) || 25;
         const adminPassword = document.getElementById('setting-admin-pass').value || 'admin123';
         
+        let recordId;
         let first = await db.settings.toCollection().first();
         if(first) {
-            await db.settings.update(first.id, {targetAmount, workingDays, adminPassword});
+            await db.settings.update(first.id, {targetAmount, workingDays, adminPassword, synced: 0});
+            recordId = first.id;
         } else {
-            await db.settings.add({targetAmount, workingDays, adminPassword});
+            recordId = await db.settings.add({id: 1, targetAmount, workingDays, adminPassword, synced: 0});
         }
         showToast('Settings Updated');
         updateDashboardCard();
 
         // --- Online Sync Settings ---
-        syncToCloud('settings', {
+        await syncToCloud('settings', {
             id: 1,
             target_amount: targetAmount,
             working_days: workingDays,
             admin_password: adminPassword
-        }, { id: 1 });
+        }, { id: 1 }, 'settings', recordId);
     });
 
     // Issue Modifiers
@@ -1290,16 +1297,16 @@ async function loadStaffDropdowns() {
     if(historyDrop) historyDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
 
     list.forEach(s => {
-        issueDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
-        collectDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
-        if(reportDrop) reportDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
-        if(historyDrop) historyDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
+        issueDrop.insertAdjacentHTML('beforeend', `<option value="${String(s.id)}">${s.name} - ${s.routeName}</option>`);
+        collectDrop.insertAdjacentHTML('beforeend', `<option value="${String(s.id)}">${s.name} - ${s.routeName}</option>`);
+        if(reportDrop) reportDrop.insertAdjacentHTML('beforeend', `<option value="${String(s.id)}">${s.name} - ${s.routeName}</option>`);
+        if(historyDrop) historyDrop.insertAdjacentHTML('beforeend', `<option value="${String(s.id)}">${s.name} - ${s.routeName}</option>`);
     });
 
     // CRITICAL FIX: If a distributor's dropdown gets re-rendered during background cloud sync, we MUST re-select their ID.
     if(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'distributor') {
-        issueDrop.value = currentUser.id;
-        collectDrop.value = currentUser.id;
+        issueDrop.value = String(currentUser.id);
+        collectDrop.value = String(currentUser.id);
     }
 
     // Default dates
@@ -1375,12 +1382,10 @@ async function loadPreviousBalances() {
     }
 
     // 1. Get the last Sales record (Settlement)
-    let lastSale = await db.dailySales.where('staffId').equals(staffId).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
-    if(!lastSale && !isNaN(staffId)) lastSale = await db.dailySales.where('staffId').equals(Number(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
+    let lastSale = await db.dailySales.where('staffId').equals(String(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
 
     // 2. Get the last Issue record (Morning setup)
-    let lastIssue = await db.dailyIssues.where('staffId').equals(staffId).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
-    if(!lastIssue && !isNaN(staffId)) lastIssue = await db.dailyIssues.where('staffId').equals(Number(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
+    let lastIssue = await db.dailyIssues.where('staffId').equals(String(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
 
     // 3. Logic: Whichever is newer is the current state of the distributor's bag.
     // If an issue happened on the 13th but NO collection was entered for the 13th,
@@ -2116,7 +2121,7 @@ async function checkBackupReminder() {
 }
 
 // --- Online Sync Helper ---
-async function syncToCloud(table, data, matchFields) {
+async function syncToCloud(table, data, matchFields, localStore, localId) {
     if (typeof supabaseClient === 'undefined') {
         console.error("Supabase client missing during sync");
         return;
@@ -2130,7 +2135,12 @@ async function syncToCloud(table, data, matchFields) {
         if (error) throw error;
         
         console.log(`Synced ${table} to cloud`);
-        // Small silent toast for auto-sync
+        
+        // Mark as synced locally
+        if(localStore && localId) {
+            await db[localStore].update(localId, { synced: 1 });
+        }
+
         const Toast = Swal.mixin({
             toast: true,
             position: 'bottom-end',
@@ -2143,15 +2153,48 @@ async function syncToCloud(table, data, matchFields) {
 
     } catch (err) {
         console.warn(`Sync failed for ${table}:`, err.message);
-        const Toast = Swal.mixin({
-            toast: true,
-            position: 'bottom-end',
-            showConfirmButton: false,
-            timer: 3000,
-            background: '#f43f5e',
-            color: '#fff'
-        });
-        Toast.fire({ icon: 'error', title: 'Cloud Sync Failed' });
+        // We don't show error toast for automatic background sync to avoid annoying the user
+        // But for explicit saves we can show it
+    }
+}
+
+async function pushPendingToCloud() {
+    if (typeof supabaseClient === 'undefined') return;
+    console.log("Checking for pending sync records...");
+
+    // 1. Staff
+    const pendingStaff = await db.staff.where({synced: 0}).toArray();
+    for(let s of pendingStaff) {
+        await syncToCloud('staff', {
+            name: s.name, route_name: s.routeName, phone: s.phone, password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
+        }, { phone: s.phone }, 'staff', s.id);
+    }
+
+    // 2. Issues
+    const pendingIssues = await db.dailyIssues.where({synced: 0}).toArray();
+    for(let r of pendingIssues) {
+        await syncToCloud('daily_issues', {
+            staff_id: r.staffId, date: r.date, card48: r.card48, card95: r.card95, card96: r.card96, 
+            reload_cash: r.reloadCash, total_issued_value: r.totalIssuedValue
+        }, { staff_id: r.staffId, date: r.date }, 'dailyIssues', r.id);
+    }
+
+    // 3. Sales
+    const pendingSales = await db.dailySales.where({synced: 0}).toArray();
+    for(let r of pendingSales) {
+        await syncToCloud('daily_sales', {
+            staff_id: r.staffId, date: r.date, sold_card48: r.soldCard48, sold_card95: r.soldCard95, 
+            sold_card96: r.soldCard96, sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash, 
+            total_commission: r.totalCommission, shortage_amt: r.shortageAmt
+        }, { staff_id: r.staffId, date: r.date }, 'dailySales', r.id);
+    }
+
+    // 4. Settings
+    const pendingSettings = await db.settings.where({synced: 0}).toArray();
+    for(let config of pendingSettings) {
+        await syncToCloud('settings', {
+            id: 1, target_amount: config.targetAmount, working_days: config.workingDays, admin_password: config.adminPassword
+        }, { id: 1 }, 'settings', config.id);
     }
 }
 
@@ -2175,8 +2218,8 @@ async function manualCloudSync() {
         const staffs = await db.staff.toArray();
         for(let s of staffs) {
             await syncToCloud('staff', {
-                name: s.name, route_name: s.routeName, phone: s.phone, password: s.password, target: s.target
-            }, { phone: s.phone });
+                name: s.name, route_name: s.routeName, phone: s.phone, password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
+            }, { phone: s.phone }, 'staff', s.id);
         }
 
         // 2. Sync Issues
@@ -2185,7 +2228,7 @@ async function manualCloudSync() {
             await syncToCloud('daily_issues', {
                 staff_id: r.staffId, date: r.date, card48: r.card48, card95: r.card95, card96: r.card96, 
                 reload_cash: r.reloadCash, total_issued_value: r.totalIssuedValue
-            }, { staff_id: r.staffId, date: r.date });
+            }, { staff_id: r.staffId, date: r.date }, 'dailyIssues', r.id);
         }
 
         // 3. Sync Sales
@@ -2195,7 +2238,7 @@ async function manualCloudSync() {
                 staff_id: r.staffId, date: r.date, sold_card48: r.soldCard48, sold_card95: r.soldCard95, 
                 sold_card96: r.soldCard96, sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash, 
                 total_commission: r.totalCommission, shortage_amt: r.shortageAmt
-            }, { staff_id: r.staffId, date: r.date });
+            }, { staff_id: r.staffId, date: r.date }, 'dailySales', r.id);
         }
 
         // 4. Sync Settings
@@ -2203,7 +2246,7 @@ async function manualCloudSync() {
         if(config) {
             await syncToCloud('settings', {
                 id: 1, target_amount: config.targetAmount, working_days: config.workingDays, admin_password: config.adminPassword
-            }, { id: 1 });
+            }, { id: 1 }, 'settings', config.id);
         }
 
         Swal.fire({ icon: 'success', title: 'Manual Sync Complete', text: 'All local data has been mirrored to the cloud.', background: '#1e293b', color: '#fff'});
@@ -2219,24 +2262,9 @@ async function pullFromCloud() {
     const statusEl = document.getElementById('login-sync-status');
     if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Syncing security data...';
 
-    // Only show toast if already logged in (don't clutter login screen)
-    if (currentUser) {
-        const syncToast = Swal.mixin({
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 1500,
-            timerProgressBar: true,
-            background: '#1e293b',
-            color: '#fff'
-        });
-        syncToast.fire({ icon: 'info', title: 'Cloud Syncing...' });
-    }
-
-    console.log("Starting parallel cloud data pull...");
+    console.log("Starting cloud data pull (Safe Merge)...");
 
     try {
-        // Parallel fetch for maximum speed
         const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
             supabaseClient.from('settings').select('*'),
             supabaseClient.from('staff').select('*'),
@@ -2254,22 +2282,32 @@ async function pullFromCloud() {
         const issueData = issueRes.data;
         const salesData = salesRes.data;
 
-        // 1. Process Settings
-        await db.settings.clear();
+        // 1. Process Settings (Merge)
         if(sData && sData.length > 0) {
-            await db.settings.bulkAdd(sData.map(s => ({
-                id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
-                adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
-            })));
+            for(let s of sData) {
+                // Only update if not pending sync locally
+                const local = await db.settings.get(s.id);
+                if(!local || local.synced !== 0) {
+                    await db.settings.put({
+                        id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
+                        adminPassword: s.admin_password, lastBackupDate: s.last_backup_date,
+                        synced: 1
+                    });
+                }
+            }
         }
 
-        // 2. Process Staff
-        await db.staff.clear();
+        // 2. Process Staff (Merge)
         if(staffData && staffData.length > 0) {
-            await db.staff.bulkAdd(staffData.map(s => ({
-                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target),
-                joinedDate: s.joined_date, sysId: s.sys_id
-            })));
+            for(let s of staffData) {
+                const local = await db.staff.get(s.id);
+                if(!local || local.synced !== 0) {
+                    await db.staff.put({
+                        id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target),
+                        joinedDate: s.joined_date, sysId: s.sys_id, synced: 1
+                    });
+                }
+            }
 
             if (currentUser && currentUser.role === 'distributor') {
                 const stillExists = staffData.some(s => s.phone === currentUser.id || s.id === currentUser.id);
@@ -2278,32 +2316,39 @@ async function pullFromCloud() {
                     return;
                 }
             }
-        } else if (currentUser && currentUser.role !== 'admin') {
-            logout();
-            return;
         }
 
-        // 3. Process Daily Records
-        await db.dailyIssues.clear();
+        // 3. Process Daily Records (Merge)
         if(issueData && issueData.length > 0) {
-            await db.dailyIssues.bulkAdd(issueData.map(r => ({
-                id: r.id, staffId: String(r.staff_id), date: r.date, 
-                card48: r.card48, card95: r.card95, card96: r.card96, 
-                reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value)
-            })));
+            for(let r of issueData) {
+                const local = await db.dailyIssues.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
+                if(!local || local.synced !== 0) {
+                    await db.dailyIssues.put({
+                        id: r.id, staffId: String(r.staff_id), date: r.date, 
+                        card48: r.card48, card95: r.card95, card96: r.card96, 
+                        reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
+                        synced: 1
+                    });
+                }
+            }
         }
 
-        await db.dailySales.clear();
         if(salesData && salesData.length > 0) {
-            await db.dailySales.bulkAdd(salesData.map(r => ({
-                id: r.id, staffId: String(r.staff_id), date: r.date, 
-                soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
-                soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
-                totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt)
-            })));
+            for(let r of salesData) {
+                const local = await db.dailySales.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
+                if(!local || local.synced !== 0) {
+                    await db.dailySales.put({
+                        id: r.id, staffId: String(r.staff_id), date: r.date, 
+                        soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
+                        soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
+                        totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
+                        synced: 1
+                    });
+                }
+            }
         }
 
-        console.log("Parallel Cloud Pull Complete");
+        console.log("Safe Cloud Pull Complete");
         if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Security data ready';
         
         updateDashboardCard();
