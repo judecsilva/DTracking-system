@@ -7,6 +7,12 @@ db.version(4).stores({
     dailySales: '++id, staffId, date, synced, [date+staffId]'
 });
 
+// Initialize DB
+db.open().catch(err => {
+    console.error("Failed to open db:", err);
+    // If version upgrade fails, we might need to delete and start over (last resort)
+});
+
 let currentUser = JSON.parse(localStorage.getItem('crdms_user') || 'null');
 let performanceChart = null;
 
@@ -1154,12 +1160,36 @@ function setupEventListeners() {
 
         // Staff check
         let staff = await db.staff.where('phone').equals(user).first();
+        
         if(staff && staff.password === pass) {
             currentUser = { id: String(staff.id), name: staff.name, role: 'distributor' };
             localStorage.setItem('crdms_user', JSON.stringify(currentUser));
             showApp();
         } else {
+            // Fallback: Check cloud directly if local fails (helps during first sync or DB issues)
+            if (typeof supabaseClient !== 'undefined') {
+                statusEl.innerHTML = '<i class="fas fa-search fa-spin mr-1"></i> Checking cloud credentials...';
+                try {
+                    const { data: cloudStaff, error } = await supabaseClient
+                        .from('staff')
+                        .select('*')
+                        .eq('phone', user)
+                        .eq('password', pass)
+                        .single();
+
+                    if (!error && cloudStaff) {
+                        currentUser = { id: String(cloudStaff.id), name: cloudStaff.name, role: 'distributor' };
+                        localStorage.setItem('crdms_user', JSON.stringify(currentUser));
+                        // Force a pull to update local DB after login
+                        pullFromCloud();
+                        showApp();
+                        return;
+                    }
+                } catch (e) { console.error("Cloud login failed:", e); }
+            }
+            
             Swal.fire({ icon: 'error', title: 'Login Failed', text: 'Invalid phone or password', background: '#1e293b', color: '#fff'});
+            if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Ready';
         }
     });
 
@@ -2262,92 +2292,83 @@ async function pullFromCloud() {
     const statusEl = document.getElementById('login-sync-status');
     if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Connecting to cloud...';
 
-    console.log("Starting cloud data pull (Safe Merge)...");
+    console.log("Starting cloud data pull (Step-by-step)...");
 
     try {
-        const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
-            supabaseClient.from('settings').select('*'),
-            supabaseClient.from('staff').select('*'),
-            supabaseClient.from('daily_issues').select('*'),
-            supabaseClient.from('daily_sales').select('*')
-        ]);
+        // Ensure DB is open
+        if(!db.isOpen()) await db.open();
 
-        if (sRes.error) throw sRes.error;
-        if (staffRes.error) throw staffRes.error;
-        if (issueRes.error) throw issueRes.error;
-        if (salesRes.error) throw salesRes.error;
-
-        const sData = sRes.data;
-        const staffData = staffRes.data;
-        const issueData = issueRes.data;
-        const salesData = salesRes.data;
-
-        // 1. Process Settings (Merge)
-        if(sData && sData.length > 0) {
-            for(let s of sData) {
-                const local = await db.settings.get(s.id);
-                if(!local || local.synced !== 0) {
-                    await db.settings.put({
-                        id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
-                        adminPassword: s.admin_password, lastBackupDate: s.last_backup_date,
-                        synced: 1
-                    });
+        // 1. Process Settings
+        try {
+            const { data: sData, error: sErr } = await supabaseClient.from('settings').select('*');
+            if(!sErr && sData) {
+                for(let s of sData) {
+                    const local = await db.settings.get(s.id);
+                    if(!local || local.synced !== 0) {
+                        await db.settings.put({
+                            id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
+                            adminPassword: s.admin_password, lastBackupDate: s.last_backup_date, synced: 1
+                        });
+                    }
                 }
             }
-        }
+        } catch(e) { console.warn("Settings sync skipped:", e); }
 
-        // 2. Process Staff (Merge)
-        if(staffData && staffData.length > 0) {
-            for(let s of staffData) {
-                const local = await db.staff.get(s.id);
-                if(!local || local.synced !== 0) {
-                    await db.staff.put({
-                        id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target),
-                        joinedDate: s.joined_date, sysId: s.sys_id, synced: 1
-                    });
+        // 2. Process Staff
+        try {
+            const { data: staffData, error: staffErr } = await supabaseClient.from('staff').select('*');
+            if(!staffErr && staffData) {
+                for(let s of staffData) {
+                    const local = await db.staff.get(s.id);
+                    if(!local || local.synced !== 0) {
+                        await db.staff.put({
+                            id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target),
+                            joinedDate: s.joined_date, sysId: s.sys_id, synced: 1
+                        });
+                    }
+                }
+                // Auth check
+                if (currentUser && currentUser.role === 'distributor') {
+                    const exists = staffData.some(s => String(s.phone) === String(currentUser.id) || String(s.id) === String(currentUser.id));
+                    if (!exists) { logout(); return; }
                 }
             }
+        } catch(e) { console.warn("Staff sync skipped:", e); }
 
-            if (currentUser && currentUser.role === 'distributor') {
-                const stillExists = staffData.some(s => s.phone === currentUser.id || s.id === String(currentUser.id));
-                if (!stillExists) {
-                    logout();
-                    return;
+        // 3. Process Daily Issues
+        try {
+            const { data: issueData, error: issueErr } = await supabaseClient.from('daily_issues').select('*');
+            if(!issueErr && issueData) {
+                for(let r of issueData) {
+                    const local = await db.dailyIssues.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
+                    if(!local || local.synced !== 0) {
+                        await db.dailyIssues.put({
+                            id: r.id, staffId: String(r.staff_id), date: r.date, card48: r.card48, card95: r.card95, card96: r.card96, 
+                            reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value), synced: 1
+                        });
+                    }
                 }
             }
-        }
+        } catch(e) { console.warn("Issues sync skipped:", e); }
 
-        // 3. Process Daily Records (Merge)
-        if(issueData && issueData.length > 0) {
-            for(let r of issueData) {
-                const local = await db.dailyIssues.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
-                if(!local || local.synced !== 0) {
-                    await db.dailyIssues.put({
-                        id: r.id, staffId: String(r.staff_id), date: r.date, 
-                        card48: r.card48, card95: r.card95, card96: r.card96, 
-                        reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
-                        synced: 1
-                    });
+        // 4. Process Daily Sales
+        try {
+            const { data: salesData, error: salesErr } = await supabaseClient.from('daily_sales').select('*');
+            if(!salesErr && salesData) {
+                for(let r of salesData) {
+                    const local = await db.dailySales.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
+                    if(!local || local.synced !== 0) {
+                        await db.dailySales.put({
+                            id: r.id, staffId: String(r.staff_id), date: r.date, 
+                            soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
+                            soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
+                            totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt), synced: 1
+                        });
+                    }
                 }
             }
-        }
+        } catch(e) { console.warn("Sales sync skipped:", e); }
 
-        if(salesData && salesData.length > 0) {
-            for(let r of salesData) {
-                const local = await db.dailySales.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
-                if(!local || local.synced !== 0) {
-                    await db.dailySales.put({
-                        id: r.id, staffId: String(r.staff_id), date: r.date, 
-                        soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
-                        soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
-                        totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
-                        synced: 1
-                    });
-                }
-            }
-        }
-
-        console.log("Safe Cloud Pull Complete");
         if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Cloud Synced & Ready';
         
         updateDashboardCard();
@@ -2356,8 +2377,8 @@ async function pullFromCloud() {
         if(typeof renderDistributorStats === 'function') renderDistributorStats();
 
     } catch (err) {
-        console.warn("Pull failed:", err.message);
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode Ready (Sync Delayed)';
+        console.error("Critical Pull Failure:", err);
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode Ready (Sync Error)';
     }
 }
 
