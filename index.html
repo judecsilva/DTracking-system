@@ -64,9 +64,10 @@
             /* Changed from white to dark to avoid white rim */
             border-radius: 1rem;
             box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-            padding: 1rem; /* Reduced default padding */
+            padding: 1rem;
+            /* Reduced default padding */
         }
-        
+
         @media (min-width: 768px) {
             .glass-panel {
                 padding: 1.5rem;
@@ -95,7 +96,8 @@
             border: 1px solid #334155;
             color: #f8fafc;
             border-radius: 0.5rem;
-            padding: 0.5rem 0.75rem; /* Reduced padding */
+            padding: 0.5rem 0.75rem;
+            /* Reduced padding */
             font-size: 0.875rem;
             width: 100%;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -251,7 +253,8 @@
                 </div>
                 <button type="submit" class="btn-primary w-full py-3 text-lg mt-2">Login</button>
             </form>
-            <p class="text-[10px] text-gray-500 mt-4" id="login-sync-status"><i class="fas fa-history mr-1"></i> Data automatically synced from cloud</p>
+            <p class="text-[10px] text-gray-500 mt-4" id="login-sync-status"><i class="fas fa-history mr-1"></i> Data
+                automatically synced from cloud</p>
             <p class="text-xs text-gray-600">Secure Professional Portal</p>
         </div>
     </div>
@@ -341,33 +344,42 @@
                         <!-- Metric Cards -->
                         <div
                             class="glass-panel p-3 md:p-6 border-l-4 border-l-purple-500 hover:bg-slate-800/80 transition-colors">
-                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Monthly Target
+                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
+                                Monthly Target
                             </h3>
                             <p class="text-lg md:text-3xl font-bold mt-2" id="metric-monthly-target">Rs. 0</p>
                         </div>
                         <div
                             class="glass-panel p-3 md:p-6 border-l-4 border-l-green-400 hover:bg-slate-800/80 transition-colors">
-                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Sales To Date
+                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
+                                Sales To Date
                             </h3>
-                            <p class="text-lg md:text-3xl font-bold mt-2 text-green-400" id="metric-monthly-sales">Rs. 0</p>
+                            <p class="text-lg md:text-3xl font-bold mt-2 text-green-400" id="metric-monthly-sales">Rs. 0
+                            </p>
                         </div>
                         <div
                             class="glass-panel p-3 md:p-6 border-l-4 border-l-blue-400 hover:bg-slate-800/80 transition-colors">
-                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Today's Target
+                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
+                                Today's Target
                             </h3>
-                            <p class="text-lg md:text-3xl font-bold mt-2 text-blue-400" id="metric-today-target">Rs. 0</p>
+                            <p class="text-lg md:text-3xl font-bold mt-2 text-blue-400" id="metric-today-target">Rs. 0
+                            </p>
                         </div>
                         <div
                             class="glass-panel p-3 md:p-6 border-l-4 border-l-red-500 hover:bg-slate-800/80 transition-colors">
-                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Balance Target
+                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
+                                Balance Target
                             </h3>
-                            <p class="text-lg md:text-3xl font-bold mt-2 text-red-500" id="metric-main-balance-target">Rs. 0</p>
+                            <p class="text-lg md:text-3xl font-bold mt-2 text-red-500" id="metric-main-balance-target">
+                                Rs. 0</p>
                         </div>
                         <div
                             class="glass-panel p-3 md:p-6 border-l-4 border-l-pink-500 hover:bg-slate-800/80 transition-colors">
-                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">Face Value
+                            <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
+                                Face Value
                             </h3>
-                            <p class="text-lg md:text-3xl font-bold mt-2 text-pink-500" id="metric-monthly-face">Rs. 0</p>
+                            <p class="text-lg md:text-3xl font-bold mt-2 text-pink-500" id="metric-monthly-face">Rs. 0
+                            </p>
                         </div>
                     </div>
 
@@ -429,7 +441,8 @@
                                 <i class="fas fa-boxes-packing text-base md:text-xl"></i>
                             </div>
                             <div>
-                                <p class="text-[9px] md:text-sm text-gray-400 font-medium whitespace-nowrap">Total Issued Value</p>
+                                <p class="text-[9px] md:text-sm text-gray-400 font-medium whitespace-nowrap">Total
+                                    Issued Value</p>
                                 <p class="text-sm md:text-xl font-bold" id="metric-today-issued">Rs. 0</p>
                             </div>
                         </div>
@@ -438,7 +451,8 @@
                                 <i class="fas fa-sack-dollar text-base md:text-xl"></i>
                             </div>
                             <div>
-                                <p class="text-[9px] md:text-sm text-gray-400 font-medium whitespace-nowrap">Total Collected Cash</p>
+                                <p class="text-[9px] md:text-sm text-gray-400 font-medium whitespace-nowrap">Total
+                                    Collected Cash</p>
                                 <p class="text-sm md:text-xl font-bold" id="metric-today-collected">Rs. 0</p>
                             </div>
                         </div>
@@ -488,15 +502,20 @@
                     <div id="dist-info-card-issue" class="hidden mb-4">
                         <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-center">
                             <div class="glass-panel p-3 bg-indigo-500/5 border-indigo-500/20">
-                                <p class="text-[8px] md:text-xs text-indigo-400 font-black mb-1 uppercase tracking-widest">Monthly Target</p>
+                                <p
+                                    class="text-[8px] md:text-xs text-indigo-400 font-black mb-1 uppercase tracking-widest">
+                                    Monthly Target</p>
                                 <h4 class="text-sm md:text-2xl font-black text-white personal-target">Rs. 0</h4>
                             </div>
                             <div class="glass-panel p-3 bg-emerald-500/5 border-emerald-500/20">
-                                <p class="text-[8px] md:text-xs text-emerald-400 font-black mb-1 uppercase tracking-widest">Sales To Date</p>
+                                <p
+                                    class="text-[8px] md:text-xs text-emerald-400 font-black mb-1 uppercase tracking-widest">
+                                    Sales To Date</p>
                                 <h4 class="text-sm md:text-2xl font-black text-white personal-sales">Rs. 0</h4>
                             </div>
                             <div class="glass-panel p-3 bg-red-500/5 border-red-500/20 col-span-2 md:col-span-1">
-                                <p class="text-[8px] md:text-xs text-red-400 font-black mb-1 uppercase tracking-widest">Balance Target</p>
+                                <p class="text-[8px] md:text-xs text-red-400 font-black mb-1 uppercase tracking-widest">
+                                    Balance Target</p>
                                 <h4 class="text-sm md:text-2xl font-black text-white personal-balance">Rs. 0</h4>
                             </div>
                         </div>
@@ -704,16 +723,19 @@
                                 <!-- Summary Card -->
                                 <div
                                     class="glass-panel p-6 bg-gradient-to-br from-indigo-600/20 to-slate-900/80 border-indigo-500/30 shadow-xl">
-                                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4 border-b border-slate-700/50 pb-4">
+                                    <div
+                                        class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4 border-b border-slate-700/50 pb-4">
                                         <div>
                                             <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
                                                 Total Card Value</p>
-                                            <p class="text-base font-bold text-blue-400" id="issue-card-total-val">Rs. 0.00</p>
+                                            <p class="text-base font-bold text-blue-400" id="issue-card-total-val">Rs.
+                                                0.00</p>
                                         </div>
                                         <div>
                                             <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
                                                 Shop Comm (Expected)</p>
-                                            <p class="text-base font-bold text-amber-500" id="issue-shop-comm-val">Rs. 0.00</p>
+                                            <p class="text-base font-bold text-amber-500" id="issue-shop-comm-val">Rs.
+                                                0.00</p>
                                         </div>
                                     </div>
                                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -764,15 +786,18 @@
                     <div id="dist-info-card-collect" class="hidden mb-4">
                         <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-center">
                             <div class="glass-panel p-3 bg-indigo-900/10 border-indigo-500/20">
-                                <p class="text-[8px] md:text-xs text-indigo-400 uppercase font-black mb-1">Monthly Target</p>
+                                <p class="text-[8px] md:text-xs text-indigo-400 uppercase font-black mb-1">Monthly
+                                    Target</p>
                                 <h4 class="text-sm md:text-xl font-black text-white personal-target">Rs. 0</h4>
                             </div>
                             <div class="glass-panel p-3 bg-emerald-900/10 border-emerald-500/20">
-                                <p class="text-[8px] md:text-xs text-emerald-400 uppercase font-black mb-1">Monthly Sales</p>
+                                <p class="text-[8px] md:text-xs text-emerald-400 uppercase font-black mb-1">Monthly
+                                    Sales</p>
                                 <h4 class="text-sm md:text-xl font-black text-white personal-sales">Rs. 0</h4>
                             </div>
                             <div class="glass-panel p-3 bg-red-900/10 border-red-500/20 col-span-2 md:col-span-1">
-                                <p class="text-[8px] md:text-xs text-red-400 uppercase font-black mb-1">Balance Target</p>
+                                <p class="text-[8px] md:text-xs text-red-400 uppercase font-black mb-1">Balance Target
+                                </p>
                                 <h4 class="text-sm md:text-xl font-black text-white personal-balance">Rs. 0</h4>
                             </div>
                         </div>
@@ -810,11 +835,14 @@
                             <div>
                                 <label class="block text-xs font-bold mb-2 text-gray-400 uppercase">Settlement
                                     Date</label>
-                                <input type="date" id="collect-date" class="input-field" onchange="clearCollectionForm();" required>
+                                <input type="date" id="collect-date" class="input-field"
+                                    onchange="clearCollectionForm();" required>
                             </div>
                             <div>
                                 <label class="block text-xs font-bold mb-2 text-gray-400 uppercase">Staff Member</label>
-                                <select id="collect-staff" class="input-field" onchange="updateStaffPerformanceDisplay(this.value); clearCollectionForm();" required>
+                                <select id="collect-staff" class="input-field"
+                                    onchange="updateStaffPerformanceDisplay(this.value); clearCollectionForm();"
+                                    required>
                                     <option value="" disabled selected>Select Staff...</option>
                                 </select>
                             </div>
@@ -1089,13 +1117,15 @@
                                     </div>
                                     <div>
                                         <label
-                                            class="block text-xs font-bold mb-2 text-indigo-400 uppercase tracking-wider">Joined Date</label>
+                                            class="block text-xs font-bold mb-2 text-indigo-400 uppercase tracking-wider">Joined
+                                            Date</label>
                                         <input type="date" id="staff-joined"
                                             class="input-field py-3 px-4 text-base bg-slate-800/50" required>
                                     </div>
                                     <div>
                                         <label
-                                            class="block text-xs font-bold mb-2 text-gray-400 uppercase tracking-wider">System ID</label>
+                                            class="block text-xs font-bold mb-2 text-gray-400 uppercase tracking-wider">System
+                                            ID</label>
                                         <input type="text" id="staff-sysid"
                                             class="input-field py-3 px-4 text-base bg-slate-800/30 text-gray-500 border-none select-none cursor-not-allowed"
                                             placeholder="Auto Assigned" readonly>
@@ -1123,9 +1153,11 @@
                                                 <th
                                                     class="py-3 px-4 font-semibold text-center w-8 border-b border-slate-700">
                                                     #</th>
-                                                <th class="py-3 px-2 font-semibold border-b border-slate-700 text-xs">EMP ID</th>
+                                                <th class="py-3 px-2 font-semibold border-b border-slate-700 text-xs">
+                                                    EMP ID</th>
                                                 <th class="py-3 px-4 font-semibold border-b border-slate-700">Name</th>
-                                                <th class="py-3 px-4 font-semibold border-b border-slate-700">Joined</th>
+                                                <th class="py-3 px-4 font-semibold border-b border-slate-700">Joined
+                                                </th>
                                                 <th class="py-3 px-4 font-semibold border-b border-slate-700">Route</th>
                                                 <th class="py-3 px-4 font-semibold border-b border-slate-700">Target
                                                 </th>
@@ -1323,25 +1355,30 @@
                     <div class="glass-panel p-6 mb-6">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
                             <div>
-                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">Select Distributor</label>
+                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">Select
+                                    Distributor</label>
                                 <select id="history-staff" class="input-field py-2" required></select>
                             </div>
                             <div>
-                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">Select Month</label>
+                                <label class="block text-[10px] font-black text-gray-400 uppercase mb-2">Select
+                                    Month</label>
                                 <input type="month" id="history-month" class="input-field py-2" required>
                             </div>
                             <div>
-                                <button onclick="generateHistoryView()" class="btn-primary py-2.5 w-full shadow-indigo-500/20">
+                                <button onclick="generateHistoryView()"
+                                    class="btn-primary py-2.5 w-full shadow-indigo-500/20">
                                     <i class="fas fa-history mr-2"></i> Fetch History
                                 </button>
                             </div>
                         </div>
                     </div>
 
-                    <div id="history-result-area" class="hidden glass-panel overflow-hidden border-indigo-500/10 shadow-xl bg-slate-800/20">
+                    <div id="history-result-area"
+                        class="hidden glass-panel overflow-hidden border-indigo-500/10 shadow-xl bg-slate-800/20">
                         <div class="p-5 border-b border-slate-700/50 flex justify-between items-center bg-[#1e293b]/50">
                             <div>
-                                <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name</h3>
+                                <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name
+                                </h3>
                                 <p class="text-xs text-gray-400" id="history-title-month">Month</p>
                             </div>
                             <button onclick="printHistoryReport()" class="btn-secondary py-1.5 px-4 text-xs no-print">
@@ -1350,7 +1387,8 @@
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-xs">
-                                <thead class="bg-indigo-600/10 text-[9px] font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20">
+                                <thead
+                                    class="bg-indigo-600/10 text-[9px] font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20">
                                     <tr>
                                         <th class="py-3 px-3">Date</th>
                                         <th class="py-3 px-3">Cards (Total FV)</th>

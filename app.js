@@ -2260,7 +2260,7 @@ async function pullFromCloud() {
     if (typeof supabaseClient === 'undefined') return;
     
     const statusEl = document.getElementById('login-sync-status');
-    if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Syncing security data...';
+    if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Connecting to cloud...';
 
     console.log("Starting cloud data pull (Safe Merge)...");
 
@@ -2285,7 +2285,6 @@ async function pullFromCloud() {
         // 1. Process Settings (Merge)
         if(sData && sData.length > 0) {
             for(let s of sData) {
-                // Only update if not pending sync locally
                 const local = await db.settings.get(s.id);
                 if(!local || local.synced !== 0) {
                     await db.settings.put({
@@ -2310,7 +2309,7 @@ async function pullFromCloud() {
             }
 
             if (currentUser && currentUser.role === 'distributor') {
-                const stillExists = staffData.some(s => s.phone === currentUser.id || s.id === currentUser.id);
+                const stillExists = staffData.some(s => s.phone === currentUser.id || s.id === String(currentUser.id));
                 if (!stillExists) {
                     logout();
                     return;
@@ -2349,7 +2348,7 @@ async function pullFromCloud() {
         }
 
         console.log("Safe Cloud Pull Complete");
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Security data ready';
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Cloud Synced & Ready';
         
         updateDashboardCard();
         loadStaffDropdowns();
@@ -2358,7 +2357,7 @@ async function pullFromCloud() {
 
     } catch (err) {
         console.warn("Pull failed:", err.message);
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode Ready';
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode Ready (Sync Delayed)';
     }
 }
 
