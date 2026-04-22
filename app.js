@@ -428,25 +428,33 @@ async function renderDistributorStats() {
     }
 
     const currentMonth = getCurrentMonthString();
+    const todayStr = getTodayString();
     const tbody = document.getElementById('distributor-performance-list');
     if(!tbody) return;
 
     if(list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="py-12 text-center text-gray-500 italic">${query ? 'No results for "'+query+'"' : 'No distributors found. Add staff in settings.'}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="py-12 text-center text-gray-500 italic">${query ? 'No results for "'+query+'"' : 'No distributors found. Add staff in settings.'}</td></tr>`;
         return;
     }
+
+    // Optimization: Bulk fetch all today's and this month's data to avoid N+1 queries
+    const [allTodayIssues, allTodaySales, allMonthSales] = await Promise.all([
+        db.dailyIssues.where('date').equals(todayStr).toArray(),
+        db.dailySales.where('date').equals(todayStr).toArray(),
+        db.dailySales.where('date').startsWith(currentMonth).toArray()
+    ]);
 
     let html = '';
     let filteredTotalIssued = 0;
     let filteredTotalCollected = 0;
-    const todayStr = getTodayString();
     
     for (const staff of list) {
-        // Calculate filter-specific totals for the metric boxes
-        const tIssue = await db.dailyIssues.where('[date+staffId]').equals([todayStr, String(staff.id)]).first() || 
-                       await db.dailyIssues.where('[date+staffId]').equals([todayStr, Number(staff.id)]).first();
-        const tSale = await db.dailySales.where('[date+staffId]').equals([todayStr, String(staff.id)]).first() || 
-                      await db.dailySales.where('[date+staffId]').equals([todayStr, Number(staff.id)]).first();
+        const sId = String(staff.id);
+        const sIdNum = Number(staff.id);
+
+        // Find today's data from bulk fetch
+        const tIssue = allTodayIssues.find(i => String(i.staffId) === sId || Number(i.staffId) === sIdNum);
+        const tSale = allTodaySales.find(s => String(s.staffId) === sId || Number(s.staffId) === sIdNum);
 
         if (tIssue) {
             let val = Number(tIssue.totalIssuedValue);
@@ -459,14 +467,12 @@ async function renderDistributorStats() {
             filteredTotalCollected += Number(tSale.handCash || 0);
         }
 
-        const sales = await db.dailySales
-            .where('staffId').equals(staff.id)
-            .filter(r => r.date.startsWith(currentMonth))
-            .toArray();
+        // Get this month's sales for this staff from bulk fetch
+        const staffMonthSales = allMonthSales.filter(s => String(s.staffId) === sId || Number(s.staffId) === sIdNum);
 
         let totalS = 0;
         let totalC = 0;
-        sales.forEach(r => {
+        staffMonthSales.forEach(r => {
             const val = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96) + Number(r.soldReloadCash || 0);
             totalS += val;
             totalC += Number(r.totalCommission || 0);
@@ -475,9 +481,9 @@ async function renderDistributorStats() {
         const target = staff.target || 0;
         const perc = target > 0 ? (totalS / target * 100) : 0;
         
-        // Calculate dynamic daily target for this specific staff
-        const settings = await db.settings.toCollection().first();
-        const workedDays = new Set(sales.map(r => r.date)).size;
+        // Settings for dynamic target
+        const settings = await db.settings.toCollection().first(); // Fast enough
+        const workedDays = new Set(staffMonthSales.map(r => r.date)).size;
         const totalWokingDays = settings ? (settings.workingDays || 25) : 25;
         let daysLeft = totalWokingDays - workedDays;
         if(daysLeft < 1) daysLeft = 1;
@@ -485,7 +491,7 @@ async function renderDistributorStats() {
         const dynamicDayTarget = remainingTarget / daysLeft;
         const balanceTarget = (target - totalS) > 0 ? (target - totalS) : 0;
         
-        const lastRec = sales.sort((a,b) => b.date.localeCompare(a.date))[0];
+        const lastRec = staffMonthSales.sort((a,b) => b.date.localeCompare(a.date))[0];
         const sAmt = lastRec ? Number(lastRec.shortageAmt || 0) : 0;
         const bStatus = sAmt > 0.01 ? 'SHORT' : (sAmt < -0.01 ? 'EXCESS' : 'BALANCED');
         const bColor = bStatus === 'EXCESS' ? 'text-emerald-400' : (bStatus === 'SHORT' ? 'text-rose-400' : 'text-gray-500');
