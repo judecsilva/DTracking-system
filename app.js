@@ -2415,8 +2415,9 @@ window.generateHistoryView = async function() {
     let grandTotalShortage = 0;
 
     sortedDates.forEach(date => {
-        const issue = monthlyIssues.find(i => i.date === date);
-        const sale = monthlySales.find(s => s.date === date);
+        // Use loose equality (==) to handle mixed types from local/cloud storage
+        const issue = monthlyIssues.find(i => i.date === date && i.staffId == staffId);
+        const sale = monthlySales.find(s => s.date === date && s.staffId == staffId);
 
         // Issue Metrics
         let cardFV = 0;
@@ -2538,12 +2539,8 @@ window.deleteHistoryRecord = async function(date, staffId) {
                 await supabaseClient.from('daily_sales').delete().match({ date: date, staff_id: staffId });
             }
             
-            await db.dailyIssues.where({date: date, staffId: staffId}).delete();
-            await db.dailySales.where({date: date, staffId: staffId}).delete();
-            if(!isNaN(staffId)) {
-                await db.dailyIssues.where({date: date, staffId: Number(staffId)}).delete();
-                await db.dailySales.where({date: date, staffId: Number(staffId)}).delete();
-            }
+            await db.dailyIssues.where('date').equals(date).and(r => r.staffId == staffId).delete();
+            await db.dailySales.where('date').equals(date).and(r => r.staffId == staffId).delete();
             
             showToast('Day Record Deleted');
             generateHistoryView(); // refresh the table
