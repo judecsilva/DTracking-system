@@ -274,12 +274,12 @@ async function updateDashboardCard() {
         monthlyTarget = staff ? staff.target : 0;
         
         monthSales = await db.dailySales
-            .where({staffId: currentUser.id})
+            .where('staffId').equals(currentUser.id)
             .filter(record => record.date.startsWith(currentMonth))
             .toArray();
             
-        todayIssuesList = await db.dailyIssues.where({date: todayStr, staffId: currentUser.id}).toArray();
-        todaySalesList = await db.dailySales.where({date: todayStr, staffId: currentUser.id}).toArray();
+        todayIssuesList = await db.dailyIssues.where('[date+staffId]').equals([todayStr, currentUser.id]).toArray();
+        todaySalesList = await db.dailySales.where('[date+staffId]').equals([todayStr, currentUser.id]).toArray();
         
         // Update header if needed or a sub-label
         document.getElementById('display-user-role').innerText = 'DISTRIBUTOR (' + (staff ? staff.routeName : '') + ')';
@@ -287,11 +287,11 @@ async function updateDashboardCard() {
         // Global Admin Stats
         monthlyTarget = targetSetting ? targetSetting.targetAmount : 0;
         monthSales = await db.dailySales
-            .filter(record => record.date.startsWith(currentMonth))
+            .where('date').startsWith(currentMonth)
             .toArray();
             
-        todayIssuesList = await db.dailyIssues.filter(r => r.date === todayStr).toArray();
-        todaySalesList = await db.dailySales.filter(r => r.date === todayStr).toArray();
+        todayIssuesList = await db.dailyIssues.where('date').equals(todayStr).toArray();
+        todaySalesList = await db.dailySales.where('date').equals(todayStr).toArray();
     }
     
     let totalSales = monthSales.reduce((sum, record) => {
@@ -318,7 +318,14 @@ async function updateDashboardCard() {
     let perc = (totalSales / (monthlyTarget || 1)) * 100;
     if(perc > 100) perc = 100;
 
-    let totalTodayIssued = todayIssuesList.reduce((sum, r) => sum + Number(r.totalIssuedValue || 0), 0);
+    let totalTodayIssued = todayIssuesList.reduce((sum, r) => {
+        // Fallback calculation if totalIssuedValue is missing (occurs sometimes after cloud sync)
+        let val = Number(r.totalIssuedValue);
+        if (isNaN(val) || val === 0) {
+            val = (Number(r.newC48 || 0) * 48) + (Number(r.newC95 || 0) * 95) + (Number(r.newC96 || 0) * 96) + Number(r.newReload || 0);
+        }
+        return sum + val;
+    }, 0);
     let totalTodayCollected = todaySalesList.reduce((sum, r) => sum + Number(r.handCash || 0), 0);
 
     // Update UI
