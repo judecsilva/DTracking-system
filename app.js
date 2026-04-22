@@ -314,16 +314,6 @@ async function updateDashboardCard() {
     let perc = (totalSales / (monthlyTarget || 1)) * 100;
     if(perc > 100) perc = 100;
 
-    let totalTodayIssued = todayIssuesList.reduce((sum, r) => {
-        // Fallback calculation if totalIssuedValue is missing (occurs sometimes after cloud sync)
-        let val = Number(r.totalIssuedValue);
-        if (isNaN(val) || val === 0) {
-            val = (Number(r.newC48 || 0) * 48) + (Number(r.newC95 || 0) * 95) + (Number(r.newC96 || 0) * 96) + Number(r.newReload || 0);
-        }
-        return sum + val;
-    }, 0);
-    let totalTodayCollected = todaySalesList.reduce((sum, r) => sum + Number(r.handCash || 0), 0);
-
     // Update UI
     const targetEl = document.getElementById('metric-monthly-target');
     const salesEl = document.getElementById('metric-monthly-sales');
@@ -333,8 +323,6 @@ async function updateDashboardCard() {
     const progressText = document.getElementById('progress-text');
     const progressTarget = document.getElementById('progress-target');
     const daysRem = document.getElementById('days-remaining');
-    const todayIssued = document.getElementById('metric-today-issued');
-    const todayColl = document.getElementById('metric-today-collected');
 
     if(targetEl) targetEl.innerText = formatCurrency(monthlyTarget);
     if(salesEl) salesEl.innerText = formatCurrency(totalSales);
@@ -348,9 +336,6 @@ async function updateDashboardCard() {
     if(progressBar) progressBar.style.width = perc + '%';
     if(progressText) progressText.innerText = perc.toFixed(1) + '% Completed';
     if(daysRem) daysRem.innerText = `${daysLeft} Working Days Left`;
-
-    if(todayIssued) todayIssued.innerText = formatCurrency(totalTodayIssued);
-    if(todayColl) todayColl.innerText = formatCurrency(totalTodayCollected);
 
     if(currentUser && currentUser.role === 'admin') {
         renderDistributorStats();
@@ -445,33 +430,11 @@ async function renderDistributorStats() {
     ]);
 
     let html = '';
-    let filteredTotalIssued = 0;
-    let filteredTotalCollected = 0;
     
     for (const staff of list) {
         const sIdNum = staff.id;
 
-        // Sum up today's records for this specific staff using a safer filter
-        const staffTodayIssues = allTodayIssues.filter(i => i.staffId == sIdNum);
-        const staffTodaySales = allTodaySales.filter(s => s.staffId == sIdNum);
-
-        staffTodayIssues.forEach(tIssue => {
-            let val = Number(tIssue.total_issued_value || tIssue.totalIssuedValue) || 0;
-            if (val === 0) {
-                // Calculation fallback for cloud-synced data
-                val = (Number(tIssue.card48 || 0) * 48) + 
-                      (Number(tIssue.card95 || 0) * 95) + 
-                      (Number(tIssue.card96 || 0) * 96) + 
-                      (Number(tIssue.reload_cash || tIssue.reloadCash || 0));
-            }
-            filteredTotalIssued += val;
-        });
-
-        staffTodaySales.forEach(tSale => {
-            filteredTotalCollected += Number(tSale.hand_cash || tSale.handCash || 0);
-        });
-
-        // Current Month Stats for the table
+        // Get this month's sales for this staff from bulk fetch
         const staffMonthSales = allMonthSales.filter(s => s.staffId == sIdNum);
 
         let totalS = 0;
@@ -530,12 +493,6 @@ async function renderDistributorStats() {
             </tr>
         `;
     }
-
-    // Update the metric boxes based on the filtered staff list
-    const todayIssuedEl = document.getElementById('metric-today-issued');
-    const todayCollEl = document.getElementById('metric-today-collected');
-    if(todayIssuedEl) todayIssuedEl.innerText = formatCurrency(filteredTotalIssued);
-    if(todayCollEl) todayCollEl.innerText = formatCurrency(filteredTotalCollected);
 
     tbody.innerHTML = html;
 }
