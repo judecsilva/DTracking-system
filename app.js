@@ -164,11 +164,7 @@ window.logout = function() {
 
 // --- Helper Functions ---
 function getTodayString() {
-    const today = new Date();
-    // Adjust for timezone locally
-    const offset = today.getTimezoneOffset() * 60000;
-    const localISOTime = (new Date(today - offset)).toISOString().slice(0, 10);
-    return localISOTime;
+    return new Date().toLocaleDateString('en-CA'); // Always YYYY-MM-DD
 }
 
 function getCurrentMonthString() {
@@ -437,7 +433,11 @@ async function renderDistributorStats() {
         return;
     }
 
-    // Optimization: Bulk fetch all today's and this month's data to avoid N+1 queries
+    // Move expensive settings fetch OUTSIDE the loop for speed
+    const settings = await db.settings.toCollection().first();
+    const totalWokingDays = settings ? (settings.workingDays || 25) : 25;
+
+    // Optimization: Bulk fetch all today's and this month's data in one go
     const [allTodayIssues, allTodaySales, allMonthSales] = await Promise.all([
         db.dailyIssues.where('date').equals(todayStr).toArray(),
         db.dailySales.where('date').equals(todayStr).toArray(),
@@ -451,28 +451,27 @@ async function renderDistributorStats() {
     for (const staff of list) {
         const sIdNum = staff.id;
 
-        // Find today's records correctly (handling mixed types)
-        const tIssue = allTodayIssues.find(i => i.staffId == sIdNum);
-        const tSale = allTodaySales.find(s => s.staffId == sIdNum);
+        // Sum up today's records for this specific staff using a safer filter
+        const staffTodayIssues = allTodayIssues.filter(i => i.staffId == sIdNum);
+        const staffTodaySales = allTodaySales.filter(s => s.staffId == sIdNum);
 
-        if (tIssue) {
-            // Robust calculation: Use totalIssuedValue if available, else derive from counts
-            let val = Number(tIssue.totalIssuedValue) || 0;
+        staffTodayIssues.forEach(tIssue => {
+            let val = Number(tIssue.total_issued_value || tIssue.totalIssuedValue) || 0;
             if (val === 0) {
-                // If totalIssuedValue is 0, calculate from the actual issued cards today
-                // For today's issue, we look at the 'new' items if they exist, or the total if it's a first issuance
-                val = (Number(tIssue.newC48 || tIssue.card48 || 0) * 48) + 
-                      (Number(tIssue.newC95 || tIssue.card95 || 0) * 95) + 
-                      (Number(tIssue.newC96 || tIssue.card96 || 0) * 96) + 
-                      (Number(tIssue.newReload || tIssue.reload_cash || tIssue.reloadCash || 0));
+                // Calculation fallback for cloud-synced data
+                val = (Number(tIssue.card48 || 0) * 48) + 
+                      (Number(tIssue.card95 || 0) * 95) + 
+                      (Number(tIssue.card96 || 0) * 96) + 
+                      (Number(tIssue.reload_cash || tIssue.reloadCash || 0));
             }
             filteredTotalIssued += val;
-        }
-        if (tSale) {
-            filteredTotalCollected += Number(tSale.handCash || 0);
-        }
+        });
 
-        // Get this month's sales for this staff from bulk fetch
+        staffTodaySales.forEach(tSale => {
+            filteredTotalCollected += Number(tSale.hand_cash || tSale.handCash || 0);
+        });
+
+        // Current Month Stats for the table
         const staffMonthSales = allMonthSales.filter(s => s.staffId == sIdNum);
 
         let totalS = 0;
@@ -486,10 +485,7 @@ async function renderDistributorStats() {
         const target = staff.target || 0;
         const perc = target > 0 ? (totalS / target * 100) : 0;
         
-        // Settings for dynamic target
-        const settings = await db.settings.toCollection().first(); // Fast enough
         const workedDays = new Set(staffMonthSales.map(r => r.date)).size;
-        const totalWokingDays = settings ? (settings.workingDays || 25) : 25;
         let daysLeft = totalWokingDays - workedDays;
         if(daysLeft < 1) daysLeft = 1;
         const remainingTarget = (target - totalS) > 0 ? (target - totalS) : 0;
