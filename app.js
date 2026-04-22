@@ -437,8 +437,28 @@ async function renderDistributorStats() {
     }
 
     let html = '';
+    let filteredTotalIssued = 0;
+    let filteredTotalCollected = 0;
+    const todayStr = getTodayString();
     
     for (const staff of list) {
+        // Calculate filter-specific totals for the metric boxes
+        const tIssue = await db.dailyIssues.where('[date+staffId]').equals([todayStr, String(staff.id)]).first() || 
+                       await db.dailyIssues.where('[date+staffId]').equals([todayStr, Number(staff.id)]).first();
+        const tSale = await db.dailySales.where('[date+staffId]').equals([todayStr, String(staff.id)]).first() || 
+                      await db.dailySales.where('[date+staffId]').equals([todayStr, Number(staff.id)]).first();
+
+        if (tIssue) {
+            let val = Number(tIssue.totalIssuedValue);
+            if (isNaN(val) || val === 0) {
+                val = (Number(tIssue.newC48 || 0) * 48) + (Number(tIssue.newC95 || 0) * 95) + (Number(tIssue.newC96 || 0) * 96) + Number(tIssue.newReload || 0);
+            }
+            filteredTotalIssued += val;
+        }
+        if (tSale) {
+            filteredTotalCollected += Number(tSale.handCash || 0);
+        }
+
         const sales = await db.dailySales
             .where('staffId').equals(staff.id)
             .filter(r => r.date.startsWith(currentMonth))
@@ -503,6 +523,12 @@ async function renderDistributorStats() {
             </tr>
         `;
     }
+
+    // Update the metric boxes based on the filtered staff list
+    const todayIssuedEl = document.getElementById('metric-today-issued');
+    const todayCollEl = document.getElementById('metric-today-collected');
+    if(todayIssuedEl) todayIssuedEl.innerText = formatCurrency(filteredTotalIssued);
+    if(todayCollEl) todayCollEl.innerText = formatCurrency(filteredTotalCollected);
 
     tbody.innerHTML = html;
 }
