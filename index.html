@@ -62,10 +62,9 @@
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(15, 23, 42, 0.5);
             /* Changed from white to dark to avoid white rim */
-            border-radius: 1rem;
+            border-radius: 0.75rem;
             box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-            padding: 1rem;
-            /* Reduced default padding */
+            padding: 0.75rem;
         }
 
         @media (min-width: 768px) {
@@ -96,9 +95,8 @@
             border: 1px solid #334155;
             color: #f8fafc;
             border-radius: 0.5rem;
-            padding: 0.5rem 0.75rem;
-            /* Reduced padding */
-            font-size: 0.875rem;
+            padding: 0.4rem 0.5rem;
+            font-size: 0.8rem;
             width: 100%;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
@@ -227,7 +225,7 @@
 
     <!-- LOGIN SCREEN -->
     <div id="login-container" class="min-h-screen flex items-center justify-center p-4">
-        <div class="glass-panel w-full max-w-md p-8 text-center space-y-6">
+        <div class="glass-panel w-full max-w-md p-6 md:p-8 text-center space-y-4">
             <div
                 class="bg-indigo-600/20 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto border border-indigo-500/30">
                 <i class="fas fa-boxes text-4xl text-indigo-400"></i>
@@ -251,7 +249,7 @@
                     <label class="block text-sm font-medium mb-1 text-gray-400">Password</label>
                     <input type="password" id="login-password" class="input-field" placeholder="••••••••" required>
                 </div>
-                <button type="submit" class="btn-primary w-full py-3 text-lg mt-2">Login</button>
+                <button type="submit" class="btn-primary w-full py-2.5 text-base mt-2">Login</button>
             </form>
             <p class="text-[10px] text-gray-500 mt-4" id="login-sync-status"><i class="fas fa-history mr-1"></i> Data
                 automatically synced from cloud</p>
@@ -263,7 +261,7 @@
     <div id="app-content" class="hidden min-h-screen">
         <!-- Top Bar -->
         <header
-            class="glass-panel mx-4 mt-4 md:mx-auto md:max-w-5xl rounded-t-2xl border-b-0 py-4 px-6 flex justify-between items-center z-20 relative no-print">
+            class="glass-panel mx-2 mt-2 md:mx-auto md:max-w-5xl rounded-t-2xl border-b-0 py-4 px-4 md:px-6 flex justify-between items-center z-20 relative no-print">
             <div class="flex items-center space-x-3">
                 <div
                     class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
@@ -288,11 +286,11 @@
 
         <!-- App Container -->
         <div id="app-container"
-            class="max-w-5xl mx-4 md:mx-auto mb-10 relative z-10 glass-panel rounded-b-2xl overflow-hidden min-h-[80vh] flex flex-col shadow-2xl">
+            class="max-w-5xl mx-2 md:mx-auto mb-10 relative z-10 glass-panel rounded-b-2xl overflow-hidden min-h-[80vh] flex flex-col shadow-2xl">
 
             <!-- Navigation -->
             <nav
-                class="flex overflow-x-auto space-x-2 md:space-x-8 px-6 pt-5 border-b border-gray-700/50 bg-[#1e293b]/30 no-print">
+                class="flex overflow-x-auto space-x-2 md:space-x-8 px-4 md:px-6 pt-5 border-b border-gray-700/50 bg-[#1e293b]/30 no-print">
                 <button onclick="switchTab('overview')" id="tab-overview"
                     class="nav-item nav-active pb-4 px-2 font-medium whitespace-nowrap text-sm md:text-base">
                     <i class="fas fa-chart-pie mr-2"></i> Overview
@@ -322,7 +320,7 @@
             <div class="flex-1 relative bg-slate-900/40">
 
                 <!-- OVERVIEW TAB -->
-                <div id="overview" class="tab-content fade-in p-6">
+                <div id="overview" class="tab-content fade-in p-4 md:p-6">
                     <div class="flex justify-between items-end mb-8">
                         <div>
                             <h2 class="text-2xl font-bold text-white">Dashboard Overview</h2>
@@ -347,14 +345,14 @@
                             <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
                                 Monthly Target
                             </h3>
-                            <p class="text-lg md:text-3xl font-bold mt-2" id="metric-monthly-target">Rs. 0</p>
+                            <p class="text-base md:text-3xl font-bold mt-1" id="metric-monthly-target">Rs. 0</p>
                         </div>
                         <div
                             class="glass-panel p-3 md:p-6 border-l-4 border-l-green-400 hover:bg-slate-800/80 transition-colors">
                             <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
                                 Sales To Date
                             </h3>
-                            <p class="text-lg md:text-3xl font-bold mt-2 text-green-400" id="metric-monthly-sales">Rs. 0
+                            <p class="text-base md:text-3xl font-bold mt-1 text-green-400" id="metric-monthly-sales">Rs. 0
                             </p>
                         </div>
                         <div
@@ -362,7 +360,7 @@
                             <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
                                 Today's Target
                             </h3>
-                            <p class="text-lg md:text-3xl font-bold mt-2 text-blue-400" id="metric-today-target">Rs. 0
+                            <p class="text-base md:text-3xl font-bold mt-1 text-blue-400" id="metric-today-target">Rs. 0
                             </p>
                         </div>
                         <div
@@ -370,7 +368,7 @@
                             <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
                                 Balance Target
                             </h3>
-                            <p class="text-lg md:text-3xl font-bold mt-2 text-red-500" id="metric-main-balance-target">
+                            <p class="text-base md:text-3xl font-bold mt-1 text-red-500" id="metric-main-balance-target">
                                 Rs. 0</p>
                         </div>
                         <div
@@ -378,13 +376,13 @@
                             <h3 class="text-[9px] md:text-sm font-medium text-gray-400 mb-1 tracking-wide uppercase">
                                 Face Value
                             </h3>
-                            <p class="text-lg md:text-3xl font-bold mt-2 text-pink-500" id="metric-monthly-face">Rs. 0
+                            <p class="text-base md:text-3xl font-bold mt-1 text-pink-500" id="metric-monthly-face">Rs. 0
                             </p>
                         </div>
                     </div>
 
                     <!-- Progress Bar -->
-                    <div class="glass-panel p-6 mb-8">
+                    <div class="glass-panel p-4 md:p-6 mb-8">
                         <div class="flex justify-between items-center mb-4">
                             <h3 class="text-lg font-medium">Target Progress</h3>
                             <span class="text-xs px-2 py-1 bg-slate-800 rounded text-gray-300 border border-slate-700"
@@ -492,7 +490,7 @@
                 </div>
 
                 <!-- ISSUE TAB -->
-                <div id="issue" class="tab-content hidden fade-in p-6">
+                <div id="issue" class="tab-content hidden fade-in p-4 md:p-6">
                     <div class="mb-6">
                         <h2 class="text-2xl font-bold text-white mb-1">Morning Setup - Issue Stock</h2>
                         <p class="text-sm text-gray-400">Manage daily stock assignment and in-hand balances.</p>
@@ -547,7 +545,7 @@
                     </div>
 
                     <form id="issue-form" class="space-y-6">
-                        <div class="glass-panel p-6 mb-6">
+                        <div class="glass-panel p-4 md:p-6 mb-6">
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
                                 <div>
                                     <label class="block text-sm font-medium mb-2 text-gray-300">Issue Date</label>
@@ -623,7 +621,7 @@
                                 <div class="space-y-4">
                                     <!-- Headers -->
                                     <div
-                                        class="grid grid-cols-5 gap-1 mb-2 text-[8px] md:text-[10px] font-black text-gray-500 uppercase tracking-tighter">
+                                        class="grid grid-cols-5 gap-0.5 mb-2 text-[7px] md:text-[10px] font-black text-gray-500 uppercase tracking-tighter">
                                         <div class="col-span-1">Item</div>
                                         <div class="text-center">Prev</div>
                                         <div class="text-center">New</div>
@@ -647,7 +645,7 @@
                                             readonly value="0.00">
                                     </div>
                                     <!-- Cards 95/99 -->
-                                    <div class="grid grid-cols-5 gap-1 md:gap-2 items-center">
+                                    <div class="grid grid-cols-5 gap-1 items-center">
                                         <div class="text-[10px] md:text-sm font-bold">Rs 95</div>
                                         <input type="number" id="issue-prev-c95"
                                             class="input-field py-1 px-0.5 text-center bg-slate-800/40 text-gray-400"
@@ -663,7 +661,7 @@
                                             readonly value="0.00">
                                     </div>
                                     <!-- Cards 96/100 -->
-                                    <div class="grid grid-cols-5 gap-1 md:gap-2 items-center">
+                                    <div class="grid grid-cols-5 gap-1 items-center">
                                         <div class="text-[10px] md:text-sm font-bold">Rs 96</div>
                                         <input type="number" id="issue-prev-c96"
                                             class="input-field py-1 px-0.5 text-center bg-slate-800/40 text-gray-400"
@@ -776,7 +774,7 @@
                 </div>
 
                 <!-- COLLECTION TAB -->
-                <div id="collection" class="tab-content hidden fade-in p-6">
+                <div id="collection" class="tab-content hidden fade-in p-4 md:p-6">
                     <div class="mb-6">
                         <h2 class="text-2xl font-bold text-white mb-1">Evening Entry - Collection</h2>
                         <p class="text-sm text-gray-400">Reconcile sales, commissions, and rollover stock.</p>
@@ -857,7 +855,7 @@
                         <div id="collection-details" class="hidden space-y-6">
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 <!-- Stock Activity -->
-                                <div class="glass-panel p-6 shadow-xl">
+                                <div class="glass-panel p-4 md:p-6 shadow-xl">
                                     <h3
                                         class="text-lg font-semibold mb-5 flex items-center text-blue-400 border-b border-slate-700/50 pb-3">
                                         <i class="fas fa-calculator mr-2"></i> Stock & Sales Activity
@@ -865,12 +863,12 @@
                                     <div class="space-y-4">
                                         <!-- Header -->
                                         <div
-                                            class="grid grid-cols-5 gap-2 text-[10px] font-black text-gray-500 uppercase tracking-tighter">
+                                            class="grid grid-cols-5 gap-1 text-[8px] md:text-[10px] font-black text-gray-500 uppercase tracking-tighter">
                                             <div class="col-span-1">Item (Face)</div>
-                                            <div class="text-center">Today Stock</div>
-                                            <div class="text-center">Sold Units</div>
-                                            <div class="text-center">In-Hand</div>
-                                            <div class="text-right">Rs. Value</div>
+                                            <div class="text-center">Stock</div>
+                                            <div class="text-center">Sold</div>
+                                            <div class="text-center">Hand</div>
+                                            <div class="text-right">Val</div>
                                         </div>
                                         <!-- Rows -->
                                         <div class="grid grid-cols-5 gap-2 items-center">
@@ -887,7 +885,7 @@
                                                 readonly value="0">
                                             <div id="val-c48" class="text-right text-xs font-bold text-gray-300">0</div>
                                         </div>
-                                        <div class="grid grid-cols-5 gap-2 items-center">
+                                        <div class="grid grid-cols-5 gap-1 items-center">
                                             <div class="text-sm font-bold">Rs 95 <span
                                                     class="text-[9px] text-gray-500">(99)</span></div>
                                             <input type="number" id="avail-c95"
@@ -901,7 +899,7 @@
                                                 readonly value="0">
                                             <div id="val-c95" class="text-right text-xs font-bold text-gray-300">0</div>
                                         </div>
-                                        <div class="grid grid-cols-5 gap-2 items-center">
+                                        <div class="grid grid-cols-5 gap-1 items-center">
                                             <div class="text-sm font-bold">Rs 96 <span
                                                     class="text-[9px] text-gray-500">(100)</span></div>
                                             <input type="number" id="avail-c96"
@@ -1022,7 +1020,7 @@
 
                     <div class="space-y-6">
                         <!-- Target Settings (Top Horizontal Bar) -->
-                        <div class="glass-panel p-6 shadow-lg">
+                        <div class="glass-panel p-4 md:p-6 shadow-lg">
                             <h3 class="text-lg font-semibold mb-5 pb-2 border-b border-slate-700 font-bold"><i
                                     class="fas fa-bullseye mr-2 text-red-400"></i> Monthly Target & Working Days</h3>
                             <form id="target-form" class="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
@@ -1072,7 +1070,7 @@
 
                             <!-- Staff Form -->
                             <form id="staff-form"
-                                class="bg-slate-900/40 p-6 rounded-2xl border border-slate-700/50 mb-8">
+                                class="bg-slate-900/40 p-4 md:p-6 rounded-2xl border border-slate-700/50 mb-8">
                                 <input type="hidden" id="staff-edit-id">
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
                                     <div>
@@ -1258,7 +1256,7 @@
                 </div> <!-- End Settings Tab -->
 
                 <!-- REPORTS TAB -->
-                <div id="reports" class="tab-content hidden fade-in p-6">
+                <div id="reports" class="tab-content hidden fade-in p-4 md:p-6">
                     <div class="mb-8 flex justify-between items-center no-print text-white">
                         <div>
                             <h2 class="text-2xl font-bold mb-tracking-tight">Financial Reports</h2>
@@ -1346,7 +1344,7 @@
                 </div>
 
                 <!-- HISTORY TAB (NEW) -->
-                <div id="history" class="tab-content hidden fade-in p-6">
+                <div id="history" class="tab-content hidden fade-in p-4 md:p-6">
                     <div class="mb-6">
                         <h2 class="text-2xl font-bold text-white mb-1">Distributor Monthly History</h2>
                         <p class="text-sm text-gray-400">View detailed, day-by-day summary of stock logic and sales.</p>
