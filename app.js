@@ -449,17 +449,22 @@ async function renderDistributorStats() {
     let filteredTotalCollected = 0;
     
     for (const staff of list) {
-        const sId = String(staff.id);
-        const sIdNum = Number(staff.id);
+        const sIdNum = staff.id;
 
-        // Find today's data from bulk fetch
-        const tIssue = allTodayIssues.find(i => String(i.staffId) === sId || Number(i.staffId) === sIdNum);
-        const tSale = allTodaySales.find(s => String(s.staffId) === sId || Number(s.staffId) === sIdNum);
+        // Find today's records correctly (handling mixed types)
+        const tIssue = allTodayIssues.find(i => i.staffId == sIdNum);
+        const tSale = allTodaySales.find(s => s.staffId == sIdNum);
 
         if (tIssue) {
-            let val = Number(tIssue.totalIssuedValue);
-            if (isNaN(val) || val === 0) {
-                val = (Number(tIssue.newC48 || 0) * 48) + (Number(tIssue.newC95 || 0) * 95) + (Number(tIssue.newC96 || 0) * 96) + Number(tIssue.newReload || 0);
+            // Robust calculation: Use totalIssuedValue if available, else derive from counts
+            let val = Number(tIssue.totalIssuedValue) || 0;
+            if (val === 0) {
+                // If totalIssuedValue is 0, calculate from the actual issued cards today
+                // For today's issue, we look at the 'new' items if they exist, or the total if it's a first issuance
+                val = (Number(tIssue.newC48 || tIssue.card48 || 0) * 48) + 
+                      (Number(tIssue.newC95 || tIssue.card95 || 0) * 95) + 
+                      (Number(tIssue.newC96 || tIssue.card96 || 0) * 96) + 
+                      (Number(tIssue.newReload || tIssue.reload_cash || tIssue.reloadCash || 0));
             }
             filteredTotalIssued += val;
         }
@@ -468,7 +473,7 @@ async function renderDistributorStats() {
         }
 
         // Get this month's sales for this staff from bulk fetch
-        const staffMonthSales = allMonthSales.filter(s => String(s.staffId) === sId || Number(s.staffId) === sIdNum);
+        const staffMonthSales = allMonthSales.filter(s => s.staffId == sIdNum);
 
         let totalS = 0;
         let totalC = 0;
