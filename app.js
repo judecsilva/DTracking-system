@@ -96,7 +96,7 @@ async function showApp() {
         const issueStaff = document.getElementById('issue-staff');
         const collectStaff = document.getElementById('collect-staff');
         if(issueStaff && collectStaff) {
-            const sId = currentUser.id;
+            const sId = String(currentUser.id); // Ensure string
             issueStaff.value = sId;
             collectStaff.value = sId;
             issueStaff.disabled = true;
@@ -270,12 +270,12 @@ async function updateDashboardCard() {
         monthlyTarget = staff ? staff.target : 0;
         
         monthSales = await db.dailySales
-            .where('staffId').equals(currentUser.id)
+            .where('staffId').equals(String(currentUser.id))
             .filter(record => record.date.startsWith(currentMonth))
             .toArray();
             
-        todayIssuesList = await db.dailyIssues.where('[date+staffId]').equals([todayStr, currentUser.id]).toArray();
-        todaySalesList = await db.dailySales.where('[date+staffId]').equals([todayStr, currentUser.id]).toArray();
+        todayIssuesList = await db.dailyIssues.where('[date+staffId]').equals([todayStr, String(currentUser.id)]).toArray();
+        todaySalesList = await db.dailySales.where('[date+staffId]').equals([todayStr, String(currentUser.id)]).toArray();
         
         // Update header if needed or a sub-label
         document.getElementById('display-user-role').innerText = 'DISTRIBUTOR (' + (staff ? staff.routeName : '') + ')';
@@ -432,10 +432,10 @@ async function renderDistributorStats() {
     let html = '';
     
     for (const staff of list) {
-        const sIdNum = staff.id;
+        const sIdStr = String(staff.id); // Force string comparison
 
         // Get this month's sales for this staff from bulk fetch
-        const staffMonthSales = allMonthSales.filter(s => s.staffId == sIdNum);
+        const staffMonthSales = allMonthSales.filter(s => String(s.staffId) === sIdStr);
 
         let totalS = 0;
         let totalC = 0;
@@ -455,7 +455,7 @@ async function renderDistributorStats() {
         const dynamicDayTarget = remainingTarget / daysLeft;
         const balanceTarget = (target - totalS) > 0 ? (target - totalS) : 0;
         
-        const lastRec = staffMonthSales.sort((a,b) => b.date.localeCompare(a.date))[0];
+        const lastRec = [...staffMonthSales].sort((a,b) => b.date.localeCompare(a.date))[0];
         const sAmt = lastRec ? Number(lastRec.shortageAmt || 0) : 0;
         const bStatus = sAmt > 0.01 ? 'SHORT' : (sAmt < -0.01 ? 'EXCESS' : 'BALANCED');
         const bColor = bStatus === 'EXCESS' ? 'text-emerald-400' : (bStatus === 'SHORT' ? 'text-rose-400' : 'text-gray-500');
@@ -659,7 +659,7 @@ function calculateIssueTotal() {
 async function handleIssueSubmit(e) {
     e.preventDefault();
     const date = document.getElementById('issue-date').value;
-    const staffId = document.getElementById('issue-staff').value;
+    const staffId = String(document.getElementById('issue-staff').value); // Cast to string
     
     if(!staffId) {
         Swal.fire({ icon: 'warning', title: 'Oops', text: 'Please select a staff member', background: '#1e293b', color: '#fff'});
@@ -685,9 +685,6 @@ async function handleIssueSubmit(e) {
 
     try {
         let existing = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
-        if(!existing && !isNaN(staffId)) {
-            existing = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
-        }
         
         const data = {
             date, staffId, 
@@ -738,14 +735,14 @@ async function handleIssueSubmit(e) {
 
         // --- Online Sync ---
         await syncToCloud('daily_issues', {
-            staff_id: data.staffId,
+            staff_id: staffId, // Use the string ID
             date: data.date,
             card48: data.card48,
             card95: data.card95,
             card96: data.card96,
             reload_cash: data.reloadCash,
             total_issued_value: data.totalIssuedValue
-        }, { staff_id: data.staffId, date: data.date });
+        }, { staff_id: staffId, date: data.date });
 
     } catch(err) {
         console.error(err);
@@ -755,7 +752,7 @@ async function handleIssueSubmit(e) {
 
 window.loadIssueForEdit = async function() {
     const date = document.getElementById('issue-date').value;
-    const staffId = document.getElementById('issue-staff').value;
+    const staffId = String(document.getElementById('issue-staff').value);
     
     if(!date || !staffId) {
         Swal.fire('Info', 'Please select a staff and date first.', 'info');
@@ -764,10 +761,7 @@ window.loadIssueForEdit = async function() {
 
     try {
         // 1. Fetch the actual record for today
-        let record = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
-        if(!record && !isNaN(staffId)) {
-            record = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
-        }
+        const record = await db.dailyIssues.where('[date+staffId]').equals([date, String(staffId)]).first();
         
         if (record) {
             // 2. FIRST, load the previous balances from the day BEFORE this date
@@ -810,15 +804,12 @@ let previousShortage = 0; // State
 
 async function handleLoadExpectedData() {
     const date = document.getElementById('collect-date').value;
-    const staffId = document.getElementById('collect-staff').value;
-    if(!staffId) return Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
+    const staffId = String(document.getElementById('collect-staff').value); // Cast to string
+    if(!staffId || staffId === "null") return Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
 
     try {
         // 1. Try to fetch today's Issue record
         let issued = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
-        if(!issued && !isNaN(staffId)) {
-            issued = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
-        }
         
         // 2. SMART ROLLOVER: If no Issue record exists for today, find the latest state from BEFORE today
         if(!issued) {
@@ -879,14 +870,6 @@ async function handleLoadExpectedData() {
             .and(r => r.date < date)
             .sortBy('date')
             .then(results => results[results.length - 1]);
-            
-        if (!lastSale && !isNaN(staffId)) {
-            lastSale = await db.dailySales
-                .where('staffId').equals(Number(staffId))
-                .and(r => r.date < date)
-                .sortBy('date')
-                .then(results => results[results.length - 1]);
-        }
 
         previousShortage = 0;
         const pBadge = document.getElementById('prev-shortage-badge');
@@ -1024,7 +1007,7 @@ async function handleCollectionSubmit(e) {
     if(!currentIssuedData) return;
 
     const date = document.getElementById('collect-date').value;
-    const staffId = document.getElementById('collect-staff').value;
+    const staffId = String(document.getElementById('collect-staff').value); // Cast to string
     
     const soldCard48 = Number(document.getElementById('sold-c48').value) || 0;
     const soldCard95 = Number(document.getElementById('sold-c95').value) || 0;
@@ -1092,9 +1075,6 @@ async function handleCollectionSubmit(e) {
 
     try {
         let existing = await db.dailySales.where('[date+staffId]').equals([date, staffId]).first();
-        if(!existing && !isNaN(staffId)) {
-            existing = await db.dailySales.where('[date+staffId]').equals([date, Number(staffId)]).first();
-        }
         
         if(existing) { await db.dailySales.update(existing.id, data); }
         else { await db.dailySales.add(data); }
@@ -1163,7 +1143,7 @@ function setupEventListeners() {
         // Staff check
         let staff = await db.staff.where('phone').equals(user).first();
         if(staff && staff.password === pass) {
-            currentUser = { id: staff.id, name: staff.name, role: 'distributor' };
+            currentUser = { id: String(staff.id), name: staff.name, role: 'distributor' };
             localStorage.setItem('crdms_user', JSON.stringify(currentUser));
             showApp();
         } else {
@@ -1306,8 +1286,8 @@ async function loadStaffDropdowns() {
 
     // CRITICAL FIX: If a distributor's dropdown gets re-rendered during background cloud sync, we MUST re-select their ID.
     if(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'distributor') {
-        issueDrop.value = currentUser.id;
-        collectDrop.value = currentUser.id;
+        issueDrop.value = String(currentUser.id);
+        collectDrop.value = String(currentUser.id);
     }
 
     // Default dates
@@ -1335,6 +1315,7 @@ async function renderStaffTable() {
     
     tbody.innerHTML = '';
     list.forEach((s, idx) => {
+        const staffIdStr = String(s.id);
         tbody.insertAdjacentHTML('beforeend', `
             <tr class="hover:bg-slate-800/50 transition-colors">
                 <td class="py-3 px-4 text-center font-medium w-8">${idx+1}</td>
@@ -1347,10 +1328,10 @@ async function renderStaffTable() {
                 <td class="py-3 px-4 text-gray-400">${s.routeName}</td>
                 <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(s.target || 0)}</td>
                 <td class="py-3 px-4 text-right">
-                    <button onclick="editStaff('${s.id}')" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
+                    <button onclick="editStaff('${staffIdStr}')" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button onclick="deleteStaff('${s.id}')" class="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-400/10 transition-colors">
+                    <button onclick="deleteStaff('${staffIdStr}')" class="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-400/10 transition-colors">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
@@ -1360,7 +1341,7 @@ async function renderStaffTable() {
 }
 
 async function loadPreviousBalances() {
-    const staffId = document.getElementById('issue-staff').value;
+    const staffId = String(document.getElementById('issue-staff').value);
     const selectedDate = document.getElementById('issue-date').value;
     
     // 1. Always reset "New" fields FIRST
@@ -1384,11 +1365,9 @@ async function loadPreviousBalances() {
 
     // 1. Get the last Sales record (Settlement)
     let lastSale = await db.dailySales.where('staffId').equals(staffId).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
-    if(!lastSale && !isNaN(staffId)) lastSale = await db.dailySales.where('staffId').equals(Number(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
-
+    
     // 2. Get the last Issue record (Morning setup)
     let lastIssue = await db.dailyIssues.where('staffId').equals(staffId).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
-    if(!lastIssue && !isNaN(staffId)) lastIssue = await db.dailyIssues.where('staffId').equals(Number(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
 
     // 3. Logic: Whichever is newer is the current state of the distributor's bag.
     // If an issue happened on the 13th but NO collection was entered for the 13th,
@@ -2211,11 +2190,7 @@ async function manualCloudSync() {
         for(let r of sales) {
             // REPAIR: If rollover data is missing locally, try to reconstruct it before syncing
             if (r.returnedCard48 === undefined || r.returnedCard48 === null) {
-                let matchingIssue = await db.dailyIssues.where('[date+staffId]').equals([r.date, r.staffId]).first();
-                if(!matchingIssue && !isNaN(r.staffId)) {
-                    matchingIssue = await db.dailyIssues.where('[date+staffId]').equals([r.date, Number(r.staffId)]).first();
-                }
-                
+                const matchingIssue = await db.dailyIssues.where('[date+staffId]').equals([r.date, String(r.staffId)]).first();
                 if (matchingIssue) {
                     r.returnedCard48 = (matchingIssue.card48 || 0) - (r.soldCard48 || 0);
                     r.returnedCard95 = (matchingIssue.card95 || 0) - (r.soldCard95 || 0);
@@ -2319,27 +2294,39 @@ async function pullFromCloud() {
             return;
         }
 
-        // 3. Process Daily Records - Using bulkPut to avoid clearing
+        // 3. Process Daily Records - Using smart matching [date+staffId] to prevent duplicates
         if(issueData && issueData.length > 0) {
-            await db.dailyIssues.bulkPut(issueData.map(r => ({
-                id: r.id, staffId: String(r.staff_id), date: r.date, 
-                card48: r.card48, card95: r.card95, card96: r.card96, 
-                reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value)
-            })));
+            for (const r of issueData) {
+                const staffIdStr = String(r.staff_id);
+                const existing = await db.dailyIssues.where('[date+staffId]').equals([r.date, staffIdStr]).first();
+                const data = {
+                    staffId: staffIdStr, date: r.date, 
+                    card48: r.card48, card95: r.card95, card96: r.card96, 
+                    reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value)
+                };
+                if (existing) {
+                    await db.dailyIssues.update(existing.id, data);
+                } else {
+                    await db.dailyIssues.add(data);
+                }
+            }
         }
 
         if(salesData && salesData.length > 0) {
-            const mappedSales = salesData.map(r => ({
-                id: r.id, staffId: String(r.staff_id), date: r.date, 
-                soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
-                soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
-                totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
-                returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
-                availReload: r.avail_reload
-            }));
+            for (const r of salesData) {
+                const staffIdStr = String(r.staff_id);
+                const existing = await db.dailySales.where('[date+staffId]').equals([r.date, staffIdStr]).first();
+                
+                let s = {
+                    staffId: staffIdStr, date: r.date, 
+                    soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
+                    soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
+                    totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
+                    returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
+                    availReload: r.avail_reload
+                };
 
-            // AUTO-REPAIR: If a pulled sales record is missing rollover data, reconstruct it from cloud's issueData
-            for (let s of mappedSales) {
+                // AUTO-REPAIR: If a pulled sales record is missing rollover data, reconstruct it from cloud's issueData
                 if (s.returnedCard48 === undefined || s.returnedCard48 === null) {
                     const match = issueData.find(i => String(i.staff_id) === s.staffId && i.date === s.date);
                     if (match) {
@@ -2347,12 +2334,15 @@ async function pullFromCloud() {
                         s.returnedCard95 = (match.card95 || 0) - (s.soldCard95 || 0);
                         s.returnedCard96 = (match.card96 || 0) - (s.soldCard96 || 0);
                         s.availReload = Number(match.reload_cash || 0);
-                        // We don't await the sync back here to avoid blocking UI, but it will sync on next manual sync or edit
                     }
                 }
-            }
 
-            await db.dailySales.bulkPut(mappedSales);
+                if (existing) {
+                    await db.dailySales.update(existing.id, s);
+                } else {
+                    await db.dailySales.add(s);
+                }
+            }
         }
 
         console.log("Parallel Cloud Pull Complete");
@@ -2371,7 +2361,7 @@ async function pullFromCloud() {
 
 // --- History View Logic ---
 window.generateHistoryView = async function() {
-    const staffId = document.getElementById('history-staff').value;
+    const staffId = String(document.getElementById('history-staff').value);
     const month = document.getElementById('history-month').value;
     
     if(!staffId || !month) {
@@ -2416,8 +2406,8 @@ window.generateHistoryView = async function() {
 
     sortedDates.forEach(date => {
         // Use loose equality (==) to handle mixed types from local/cloud storage
-        const issue = monthlyIssues.find(i => i.date === date && i.staffId == staffId);
-        const sale = monthlySales.find(s => s.date === date && s.staffId == staffId);
+        const issue = monthlyIssues.find(i => i.date === date && String(i.staffId) === staffId);
+        const sale = monthlySales.find(s => s.date === date && String(s.staffId) === staffId);
 
         // Issue Metrics
         let cardFV = 0;
@@ -2520,6 +2510,7 @@ window.generateHistoryView = async function() {
 }
 
 window.deleteHistoryRecord = async function(date, staffId) {
+    const staffIdStr = String(staffId);
     let res = await Swal.fire({
         title: 'Delete Entire Day?',
         text: `Are you sure you want to delete the records (Issue & Collection) for ${date}? This action cannot be undone.`,
@@ -2535,12 +2526,12 @@ window.deleteHistoryRecord = async function(date, staffId) {
     if(res.isConfirmed) {
         try {
             if (typeof supabaseClient !== 'undefined') {
-                await supabaseClient.from('daily_issues').delete().match({ date: date, staff_id: staffId });
-                await supabaseClient.from('daily_sales').delete().match({ date: date, staff_id: staffId });
+                await supabaseClient.from('daily_issues').delete().match({ date: date, staff_id: staffIdStr });
+                await supabaseClient.from('daily_sales').delete().match({ date: date, staff_id: staffIdStr });
             }
             
-            await db.dailyIssues.where('date').equals(date).and(r => r.staffId == staffId).delete();
-            await db.dailySales.where('date').equals(date).and(r => r.staffId == staffId).delete();
+            await db.dailyIssues.where('date').equals(date).and(r => String(r.staffId) === staffIdStr).delete();
+            await db.dailySales.where('date').equals(date).and(r => String(r.staffId) === staffIdStr).delete();
             
             showToast('Day Record Deleted');
             generateHistoryView(); // refresh the table
