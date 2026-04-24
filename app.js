@@ -1,11 +1,24 @@
 // --- Database Configuration (Dexie) ---
 const db = new Dexie("DistributionDB");
-db.version(3).stores({
+db.version(4).stores({
     settings: '++id, targetAmount, adminPassword',
-    staff: '++id, name, routeName, phone, password',
-    dailyIssues: '++id, staffId, date, [date+staffId]',
-    dailySales: '++id, staffId, date, [date+staffId]'
+    staff: 'uuid, id, name, routeName, phone, password, syncStatus',
+    dailyIssues: 'uuid, id, staffId, date, [date+staffId], syncStatus',
+    dailySales: 'uuid, id, staffId, date, [date+staffId], syncStatus'
 });
+
+// Helper for generating unique identifiers
+function generateUUID() {
+    try {
+        return crypto.randomUUID();
+    } catch (e) {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+}
+
 
 let currentUser = JSON.parse(localStorage.getItem('crdms_user') || 'null');
 let performanceChart = null;
@@ -40,7 +53,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('online', () => {
         console.log("Internet restored. Syncing...");
         pullFromCloud();
+        pushPendingToCloud();
     });
+
+    // --- Push any unsynced local data on startup ---
+    pushPendingToCloud();
 
     // Sync when user comes back to the app tab (optional but recommended)
     window.addEventListener('focus', () => {
@@ -64,6 +81,41 @@ document.addEventListener('DOMContentLoaded', async () => {
             .subscribe();
     }
 });
+
+async function pushPendingToCloud() {
+    if (typeof supabaseClient === 'undefined') return;
+    
+    // Push Staff
+    const pendingStaff = await db.staff.where('syncStatus').equals('pending').toArray();
+    for(let s of pendingStaff) {
+        syncToCloud('staff', s.uuid, {
+            name: s.name, route_name: s.routeName, phone: s.phone, password: s.password, target: s.target,
+            joined_date: s.joinedDate, sys_id: s.sysId
+        }, { phone: s.phone });
+    }
+
+    // Push Issues
+    const pendingIssues = await db.dailyIssues.where('syncStatus').equals('pending').toArray();
+    for(let r of pendingIssues) {
+        syncToCloud('daily_issues', r.uuid, {
+            staff_id: r.staffId, date: r.date, card48: r.card48, card95: r.card95, card96: r.card96, 
+            reload_cash: r.reloadCash, total_issued_value: r.totalIssuedValue
+        }, { staff_id: r.staffId, date: r.date });
+    }
+
+    // Push Sales
+    const pendingSales = await db.dailySales.where('syncStatus').equals('pending').toArray();
+    for(let r of pendingSales) {
+        syncToCloud('daily_sales', r.uuid, {
+            staff_id: r.staffId, date: r.date, 
+            sold_card48: r.soldCard48, sold_card95: r.sold_card95, sold_card96: r.soldCard96, 
+            sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash, 
+            total_commission: r.totalCommission, shortage_amt: r.shortageAmt,
+            returned_card48: r.returnedCard48, returned_card95: r.returned_card95, returned_card96: r.returnedCard96,
+            avail_reload: r.availReload
+        }, { staff_id: r.staffId, date: r.date });
+    }
+}
 
 function showLogin() {
     document.getElementById('login-container').classList.remove('hidden');
@@ -96,7 +148,7 @@ async function showApp() {
         const issueStaff = document.getElementById('issue-staff');
         const collectStaff = document.getElementById('collect-staff');
         if(issueStaff && collectStaff) {
-            const sId = String(currentUser.id); // Ensure string
+            const sId = currentUser.id;
             issueStaff.value = sId;
             collectStaff.value = sId;
             issueStaff.disabled = true;
@@ -270,12 +322,12 @@ async function updateDashboardCard() {
         monthlyTarget = staff ? staff.target : 0;
         
         monthSales = await db.dailySales
-            .where('staffId').equals(String(currentUser.id))
+            .where('staffId').equals(currentUser.id)
             .filter(record => record.date.startsWith(currentMonth))
             .toArray();
             
-        todayIssuesList = await db.dailyIssues.where('[date+staffId]').equals([todayStr, String(currentUser.id)]).toArray();
-        todaySalesList = await db.dailySales.where('[date+staffId]').equals([todayStr, String(currentUser.id)]).toArray();
+        todayIssuesList = await db.dailyIssues.where('[date+staffId]').equals([todayStr, currentUser.id]).toArray();
+        todaySalesList = await db.dailySales.where('[date+staffId]').equals([todayStr, currentUser.id]).toArray();
         
         // Update header if needed or a sub-label
         document.getElementById('display-user-role').innerText = 'DISTRIBUTOR (' + (staff ? staff.routeName : '') + ')';
@@ -432,10 +484,10 @@ async function renderDistributorStats() {
     let html = '';
     
     for (const staff of list) {
-        const sIdStr = String(staff.id); // Force string comparison
+        const sIdNum = staff.id;
 
         // Get this month's sales for this staff from bulk fetch
-        const staffMonthSales = allMonthSales.filter(s => String(s.staffId) === sIdStr);
+        const staffMonthSales = allMonthSales.filter(s => s.staffId == sIdNum);
 
         let totalS = 0;
         let totalC = 0;
@@ -455,7 +507,7 @@ async function renderDistributorStats() {
         const dynamicDayTarget = remainingTarget / daysLeft;
         const balanceTarget = (target - totalS) > 0 ? (target - totalS) : 0;
         
-        const lastRec = [...staffMonthSales].sort((a,b) => b.date.localeCompare(a.date))[0];
+        const lastRec = staffMonthSales.sort((a,b) => b.date.localeCompare(a.date))[0];
         const sAmt = lastRec ? Number(lastRec.shortageAmt || 0) : 0;
         const bStatus = sAmt > 0.01 ? 'SHORT' : (sAmt < -0.01 ? 'EXCESS' : 'BALANCED');
         const bColor = bStatus === 'EXCESS' ? 'text-emerald-400' : (bStatus === 'SHORT' ? 'text-rose-400' : 'text-gray-500');
@@ -659,7 +711,7 @@ function calculateIssueTotal() {
 async function handleIssueSubmit(e) {
     e.preventDefault();
     const date = document.getElementById('issue-date').value;
-    const staffId = String(document.getElementById('issue-staff').value); // Cast to string
+    const staffId = document.getElementById('issue-staff').value;
     
     if(!staffId) {
         Swal.fire({ icon: 'warning', title: 'Oops', text: 'Please select a staff member', background: '#1e293b', color: '#fff'});
@@ -685,15 +737,20 @@ async function handleIssueSubmit(e) {
 
     try {
         let existing = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
+        if(!existing && !isNaN(staffId)) {
+            existing = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
+        }
         
         const data = {
             date, staffId, 
             card48: t48, card95: t95, card96: t96, reloadCash: tReload,
             newC48: n48, newC95: n95, newC96: n96, newReload: nReload,
             prevC48: p48, prevC95: p95, prevC96: p96, prevReload: pReload,
-            totalIssuedValue 
+            totalIssuedValue,
+            syncStatus: 'pending'
         };
 
+        let targetUuid;
         if(existing) {
             let res = await Swal.fire({
                 title: 'Overwrite Issue?',
@@ -704,8 +761,12 @@ async function handleIssueSubmit(e) {
                 color: '#fff'
             });
             if(!res.isConfirmed) return;
-            await db.dailyIssues.update(existing.id, data);
+            targetUuid = existing.uuid || generateUUID();
+            data.uuid = targetUuid;
+            await db.dailyIssues.put(data); // Use put with uuid
         } else {
+            targetUuid = generateUUID();
+            data.uuid = targetUuid;
             await db.dailyIssues.add(data);
         }
         
@@ -723,7 +784,6 @@ async function handleIssueSubmit(e) {
                 const el = document.getElementById(id);
                 if(el) el.value = 0;
             });
-            // Clear shortage/excess badge
             const cashWrap = document.getElementById('issue-prev-cash-wrap');
             if(cashWrap) cashWrap.classList.add('hidden');
         }
@@ -734,15 +794,15 @@ async function handleIssueSubmit(e) {
         updateDashboardCard();
 
         // --- Online Sync ---
-        await syncToCloud('daily_issues', {
-            staff_id: staffId, // Use the string ID
+        await syncToCloud('daily_issues', targetUuid, {
+            staff_id: data.staffId,
             date: data.date,
             card48: data.card48,
             card95: data.card95,
             card96: data.card96,
             reload_cash: data.reloadCash,
             total_issued_value: data.totalIssuedValue
-        }, { staff_id: staffId, date: data.date });
+        }, { staff_id: data.staffId, date: data.date });
 
     } catch(err) {
         console.error(err);
@@ -752,7 +812,7 @@ async function handleIssueSubmit(e) {
 
 window.loadIssueForEdit = async function() {
     const date = document.getElementById('issue-date').value;
-    const staffId = String(document.getElementById('issue-staff').value);
+    const staffId = document.getElementById('issue-staff').value;
     
     if(!date || !staffId) {
         Swal.fire('Info', 'Please select a staff and date first.', 'info');
@@ -761,7 +821,10 @@ window.loadIssueForEdit = async function() {
 
     try {
         // 1. Fetch the actual record for today
-        const record = await db.dailyIssues.where('[date+staffId]').equals([date, String(staffId)]).first();
+        let record = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
+        if(!record && !isNaN(staffId)) {
+            record = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
+        }
         
         if (record) {
             // 2. FIRST, load the previous balances from the day BEFORE this date
@@ -804,12 +867,15 @@ let previousShortage = 0; // State
 
 async function handleLoadExpectedData() {
     const date = document.getElementById('collect-date').value;
-    const staffId = String(document.getElementById('collect-staff').value); // Cast to string
-    if(!staffId || staffId === "null") return Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
+    const staffId = document.getElementById('collect-staff').value;
+    if(!staffId) return Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
 
     try {
         // 1. Try to fetch today's Issue record
         let issued = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
+        if(!issued && !isNaN(staffId)) {
+            issued = await db.dailyIssues.where('[date+staffId]').equals([date, Number(staffId)]).first();
+        }
         
         // 2. SMART ROLLOVER: If no Issue record exists for today, find the latest state from BEFORE today
         if(!issued) {
@@ -870,6 +936,14 @@ async function handleLoadExpectedData() {
             .and(r => r.date < date)
             .sortBy('date')
             .then(results => results[results.length - 1]);
+            
+        if (!lastSale && !isNaN(staffId)) {
+            lastSale = await db.dailySales
+                .where('staffId').equals(Number(staffId))
+                .and(r => r.date < date)
+                .sortBy('date')
+                .then(results => results[results.length - 1]);
+        }
 
         previousShortage = 0;
         const pBadge = document.getElementById('prev-shortage-badge');
@@ -1007,7 +1081,7 @@ async function handleCollectionSubmit(e) {
     if(!currentIssuedData) return;
 
     const date = document.getElementById('collect-date').value;
-    const staffId = String(document.getElementById('collect-staff').value); // Cast to string
+    const staffId = document.getElementById('collect-staff').value;
     
     const soldCard48 = Number(document.getElementById('sold-c48').value) || 0;
     const soldCard95 = Number(document.getElementById('sold-c95').value) || 0;
@@ -1075,8 +1149,15 @@ async function handleCollectionSubmit(e) {
 
     try {
         let existing = await db.dailySales.where('[date+staffId]').equals([date, staffId]).first();
+        if(!existing && !isNaN(staffId)) {
+            existing = await db.dailySales.where('[date+staffId]').equals([date, Number(staffId)]).first();
+        }
         
-        if(existing) { await db.dailySales.update(existing.id, data); }
+        let targetUuid = existing ? (existing.uuid || generateUUID()) : generateUUID();
+        data.uuid = targetUuid;
+        data.syncStatus = 'pending';
+
+        if(existing) { await db.dailySales.put(data); }
         else { await db.dailySales.add(data); }
         
         Swal.fire({
@@ -1099,7 +1180,7 @@ async function handleCollectionSubmit(e) {
         updateDashboardCard();
 
         // --- Online Sync ---
-        await syncToCloud('daily_sales', {
+        await syncToCloud('daily_sales', targetUuid, {
             staff_id: data.staffId,
             date: data.date,
             sold_card48: data.soldCard48,
@@ -1143,7 +1224,7 @@ function setupEventListeners() {
         // Staff check
         let staff = await db.staff.where('phone').equals(user).first();
         if(staff && staff.password === pass) {
-            currentUser = { id: String(staff.id), name: staff.name, role: 'distributor' };
+            currentUser = { id: staff.id, name: staff.name, role: 'distributor' };
             localStorage.setItem('crdms_user', JSON.stringify(currentUser));
             showApp();
         } else {
@@ -1167,7 +1248,7 @@ function setupEventListeners() {
             // Check if phone number is taken by ANOTHER staff member
             let conflict = await db.staff
                 .where('phone').equals(phone)
-                .filter(s => String(s.id) !== String(id))
+                .filter(s => String(s.uuid) !== String(id) && String(s.id) !== String(id))
                 .first();
                 
             if(conflict) {
@@ -1175,9 +1256,19 @@ function setupEventListeners() {
                 return;
             }
 
-            await db.staff.update(id, {name, routeName, phone, password, target, joinedDate});
+            const existingStaff = await db.staff.get(id);
+            const targetUuid = existingStaff ? (existingStaff.uuid || id) : id;
+
+            await db.staff.update(id, {name, routeName, phone, password, target, joinedDate, syncStatus: 'pending'});
             showToast('Staff Updated');
             cancelStaffEdit();
+            
+            // Sync specific updated staff
+            const s = await db.staff.get(id);
+            syncToCloud('staff', s.uuid, {
+                name: s.name, route_name: s.routeName, phone: s.phone,
+                password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
+            }, { phone: s.phone });
         } else {
             // Check duplicate phone for NEW entry
             let exists = await db.staff.where('phone').equals(phone).first();
@@ -1196,26 +1287,19 @@ function setupEventListeners() {
                 }
             });
             const sysId = 'DS-' + String(maxId + 1).padStart(4, '0');
+            const targetUuid = generateUUID();
             
-            await db.staff.add({name, routeName, phone, password, target, joinedDate, sysId});
+            await db.staff.add({uuid: targetUuid, name, routeName, phone, password, target, joinedDate, sysId, syncStatus: 'pending'});
             document.getElementById('staff-form').reset();
             showToast('Staff Added');
-        }
-        
-        // --- Online Sync Staff ---
-        const sList = await db.staff.toArray();
-        for(let s of sList) {
-            syncToCloud('staff', {
-                name: s.name,
-                route_name: s.routeName,
-                phone: s.phone,
-                password: s.password,
-                target: s.target,
-                joined_date: s.joinedDate,
-                sys_id: s.sysId
+
+            const s = await db.staff.get(targetUuid);
+            syncToCloud('staff', s.uuid, {
+                name: s.name, route_name: s.routeName, phone: s.phone,
+                password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
             }, { phone: s.phone });
         }
-
+        
         loadStaffDropdowns();
         renderStaffTable();
     });
@@ -1286,8 +1370,8 @@ async function loadStaffDropdowns() {
 
     // CRITICAL FIX: If a distributor's dropdown gets re-rendered during background cloud sync, we MUST re-select their ID.
     if(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'distributor') {
-        issueDrop.value = String(currentUser.id);
-        collectDrop.value = String(currentUser.id);
+        issueDrop.value = currentUser.id;
+        collectDrop.value = currentUser.id;
     }
 
     // Default dates
@@ -1315,7 +1399,6 @@ async function renderStaffTable() {
     
     tbody.innerHTML = '';
     list.forEach((s, idx) => {
-        const staffIdStr = String(s.id);
         tbody.insertAdjacentHTML('beforeend', `
             <tr class="hover:bg-slate-800/50 transition-colors">
                 <td class="py-3 px-4 text-center font-medium w-8">${idx+1}</td>
@@ -1328,10 +1411,10 @@ async function renderStaffTable() {
                 <td class="py-3 px-4 text-gray-400">${s.routeName}</td>
                 <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(s.target || 0)}</td>
                 <td class="py-3 px-4 text-right">
-                    <button onclick="editStaff('${staffIdStr}')" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
+                    <button onclick="editStaff('${s.id}')" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button onclick="deleteStaff('${staffIdStr}')" class="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-400/10 transition-colors">
+                    <button onclick="deleteStaff('${s.id}')" class="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-400/10 transition-colors">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
@@ -1341,7 +1424,7 @@ async function renderStaffTable() {
 }
 
 async function loadPreviousBalances() {
-    const staffId = String(document.getElementById('issue-staff').value);
+    const staffId = document.getElementById('issue-staff').value;
     const selectedDate = document.getElementById('issue-date').value;
     
     // 1. Always reset "New" fields FIRST
@@ -1365,9 +1448,11 @@ async function loadPreviousBalances() {
 
     // 1. Get the last Sales record (Settlement)
     let lastSale = await db.dailySales.where('staffId').equals(staffId).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
-    
+    if(!lastSale && !isNaN(staffId)) lastSale = await db.dailySales.where('staffId').equals(Number(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
+
     // 2. Get the last Issue record (Morning setup)
     let lastIssue = await db.dailyIssues.where('staffId').equals(staffId).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
+    if(!lastIssue && !isNaN(staffId)) lastIssue = await db.dailyIssues.where('staffId').equals(Number(staffId)).and(r => r.date < selectedDate).sortBy('date').then(res => res[res.length-1]);
 
     // 3. Logic: Whichever is newer is the current state of the distributor's bag.
     // If an issue happened on the 13th but NO collection was entered for the 13th,
@@ -2119,13 +2204,15 @@ async function checkBackupReminder() {
 }
 
 // --- Online Sync Helper ---
-async function syncToCloud(table, data, matchFields) {
+async function syncToCloud(table, uuid, data, matchFields) {
     if (typeof supabaseClient === 'undefined') {
         console.error("Supabase client missing during sync");
         return { error: 'Client missing' };
     }
     
     try {
+        if (uuid) data.uuid = uuid;
+
         const { error } = await supabaseClient
             .from(table)
             .upsert(data, { onConflict: Object.keys(matchFields).join(',') });
@@ -2134,11 +2221,19 @@ async function syncToCloud(table, data, matchFields) {
         
         console.log(`Synced ${table} to cloud`);
         
-        // Return success for awaiters
+        if (uuid) {
+            const tableName = table === 'daily_sales' ? 'dailySales' : (table === 'daily_issues' ? 'dailyIssues' : 'staff');
+            await db[tableName].update(uuid, { syncStatus: 'synced' });
+        }
+        
         return { success: true };
 
     } catch (err) {
         console.warn(`Sync failed for ${table}:`, err.message);
+        if (uuid) {
+            const tableName = table === 'daily_sales' ? 'dailySales' : (table === 'daily_issues' ? 'dailyIssues' : 'staff');
+            await db[tableName].update(uuid, { syncStatus: 'failed' });
+        }
         const Toast = Swal.mixin({
             toast: true,
             position: 'bottom-end',
@@ -2168,52 +2263,37 @@ async function manualCloudSync() {
     });
 
     try {
-        // 1. Sync Staff
         const staffs = await db.staff.toArray();
         for(let s of staffs) {
-            await syncToCloud('staff', {
-                name: s.name, route_name: s.routeName, phone: s.phone, password: s.password, target: s.target
+            await syncToCloud('staff', s.uuid, {
+                name: s.name, route_name: s.routeName, phone: s.phone, password: s.password, target: s.target,
+                joined_date: s.joinedDate, sys_id: s.sysId
             }, { phone: s.phone });
         }
 
-        // 2. Sync Issues
         const issues = await db.dailyIssues.toArray();
         for(let r of issues) {
-            await syncToCloud('daily_issues', {
+            await syncToCloud('daily_issues', r.uuid, {
                 staff_id: r.staffId, date: r.date, card48: r.card48, card95: r.card95, card96: r.card96, 
                 reload_cash: r.reloadCash, total_issued_value: r.totalIssuedValue
             }, { staff_id: r.staffId, date: r.date });
         }
 
-        // 3. Sync Sales
         let sales = await db.dailySales.toArray();
         for(let r of sales) {
-            // REPAIR: If rollover data is missing locally, try to reconstruct it before syncing
-            if (r.returnedCard48 === undefined || r.returnedCard48 === null) {
-                const matchingIssue = await db.dailyIssues.where('[date+staffId]').equals([r.date, String(r.staffId)]).first();
-                if (matchingIssue) {
-                    r.returnedCard48 = (matchingIssue.card48 || 0) - (r.soldCard48 || 0);
-                    r.returnedCard95 = (matchingIssue.card95 || 0) - (r.soldCard95 || 0);
-                    r.returnedCard96 = (matchingIssue.card96 || 0) - (r.soldCard96 || 0);
-                    r.availReload = Number(matchingIssue.reloadCash || 0);
-                    await db.dailySales.update(r.id, r);
-                }
-            }
-
-            await syncToCloud('daily_sales', {
+            await syncToCloud('daily_sales', r.uuid, {
                 staff_id: r.staffId, date: r.date, 
                 sold_card48: r.soldCard48, sold_card95: r.soldCard95, sold_card96: r.soldCard96, 
                 sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash, 
                 total_commission: r.totalCommission, shortage_amt: r.shortageAmt,
-                returned_card48: r.returnedCard48, returned_card95: r.returnedCard95, returned_card96: r.returned_card96,
+                returned_card48: r.returnedCard48, returned_card95: r.returnedCard95, returned_card96: r.returnedCard96,
                 avail_reload: r.availReload
             }, { staff_id: r.staffId, date: r.date });
         }
 
-        // 4. Sync Settings
         const config = await db.settings.toCollection().first();
         if(config) {
-            await syncToCloud('settings', {
+            await syncToCloud('settings', null, {
                 id: 1, target_amount: config.targetAmount, working_days: config.workingDays, admin_password: config.adminPassword
             }, { id: 1 });
         }
@@ -2231,7 +2311,6 @@ async function pullFromCloud() {
     const statusEl = document.getElementById('login-sync-status');
     if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Syncing security data...';
 
-    // Only show toast if already logged in (don't clutter login screen)
     if (currentUser) {
         const syncToast = Swal.mixin({
             toast: true,
@@ -2245,10 +2324,7 @@ async function pullFromCloud() {
         syncToast.fire({ icon: 'info', title: 'Cloud Syncing...' });
     }
 
-    console.log("Starting parallel cloud data pull...");
-
     try {
-        // Parallel fetch for maximum speed
         const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
             supabaseClient.from('settings').select('*'),
             supabaseClient.from('staff').select('*'),
@@ -2261,91 +2337,70 @@ async function pullFromCloud() {
         if (issueRes.error) throw issueRes.error;
         if (salesRes.error) throw salesRes.error;
 
-        const sData = sRes.data;
-        const staffData = staffRes.data;
-        const issueData = issueRes.data;
-        const salesData = salesRes.data;
-
-        // 1. Process Settings - Using bulkPut to avoid clearing unsynced local data
-        if(sData && sData.length > 0) {
-            await db.settings.bulkPut(sData.map(s => ({
+        if(sRes.data && sRes.data.length > 0) {
+            await db.settings.bulkPut(sRes.data.map(s => ({
                 id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
                 adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
             })));
         }
 
-        // 2. Process Staff - Using bulkPut to avoid clearing
-        if(staffData && staffData.length > 0) {
-            await db.staff.bulkPut(staffData.map(s => ({
-                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, password: s.password, target: Number(s.target),
-                joinedDate: s.joined_date, sysId: s.sys_id
-            })));
-
+        if(staffRes.data && staffRes.data.length > 0) {
+            for (let s of staffRes.data) {
+                const local = await db.staff.get(s.uuid || '');
+                if (!local || local.syncStatus !== 'pending') {
+                    await db.staff.put({
+                        uuid: s.uuid || generateUUID(),
+                        id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, 
+                        password: s.password, target: Number(s.target),
+                        joinedDate: s.joined_date, sysId: s.sys_id, syncStatus: 'synced'
+                    });
+                }
+            }
             if (currentUser && currentUser.role === 'distributor') {
-                const stillExists = staffData.some(s => s.phone === currentUser.id || s.id === currentUser.id);
-                if (!stillExists) {
-                    logout();
-                    return;
-                }
+                const stillExists = staffRes.data.some(s => s.phone === currentUser.id || s.id == (currentUser.id));
+                if (!stillExists) { logout(); return; }
             }
-        } else if (currentUser && currentUser.role !== 'admin' && staffData) {
-            // Only logout if staff table is empty in cloud (unexpected)
-            logout();
-            return;
         }
 
-        // 3. Process Daily Records - Using smart matching [date+staffId] to prevent duplicates
-        if(issueData && issueData.length > 0) {
-            for (const r of issueData) {
-                const staffIdStr = String(r.staff_id);
-                const existing = await db.dailyIssues.where('[date+staffId]').equals([r.date, staffIdStr]).first();
-                const data = {
-                    staffId: staffIdStr, date: r.date, 
-                    card48: r.card48, card95: r.card95, card96: r.card96, 
-                    reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value)
-                };
-                if (existing) {
-                    await db.dailyIssues.update(existing.id, data);
-                } else {
-                    await db.dailyIssues.add(data);
+        if(issueRes.data && issueRes.data.length > 0) {
+            for (let r of issueRes.data) {
+                const localByUuid = r.uuid ? await db.dailyIssues.get(r.uuid) : null;
+                const localByDate = await db.dailyIssues.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
+                const existing = localByUuid || localByDate;
+
+                if (!existing || existing.syncStatus !== 'pending') {
+                    await db.dailyIssues.put({
+                        uuid: r.uuid || (existing ? existing.uuid : generateUUID()),
+                        id: r.id, staffId: String(r.staff_id), date: r.date, 
+                        card48: r.card48, card95: r.card95, card96: r.card96, 
+                        reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
+                        syncStatus: 'synced'
+                    });
                 }
             }
         }
 
-        if(salesData && salesData.length > 0) {
-            for (const r of salesData) {
-                const staffIdStr = String(r.staff_id);
-                const existing = await db.dailySales.where('[date+staffId]').equals([r.date, staffIdStr]).first();
-                
-                let s = {
-                    staffId: staffIdStr, date: r.date, 
-                    soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
-                    soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
-                    totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
-                    returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
-                    availReload: r.avail_reload
-                };
+        if(salesRes.data && salesRes.data.length > 0) {
+            for (let r of salesRes.data) {
+                const localByUuid = r.uuid ? await db.dailySales.get(r.uuid) : null;
+                const localByDate = await db.dailySales.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
+                const existing = localByUuid || localByDate;
 
-                // AUTO-REPAIR: If a pulled sales record is missing rollover data, reconstruct it from cloud's issueData
-                if (s.returnedCard48 === undefined || s.returnedCard48 === null) {
-                    const match = issueData.find(i => String(i.staff_id) === s.staffId && i.date === s.date);
-                    if (match) {
-                        s.returnedCard48 = (match.card48 || 0) - (s.soldCard48 || 0);
-                        s.returnedCard95 = (match.card95 || 0) - (s.soldCard95 || 0);
-                        s.returnedCard96 = (match.card96 || 0) - (s.soldCard96 || 0);
-                        s.availReload = Number(match.reload_cash || 0);
-                    }
-                }
-
-                if (existing) {
-                    await db.dailySales.update(existing.id, s);
-                } else {
-                    await db.dailySales.add(s);
+                if (!existing || existing.syncStatus !== 'pending') {
+                    await db.dailySales.put({
+                        uuid: r.uuid || (existing ? existing.uuid : generateUUID()),
+                        id: r.id, staffId: String(r.staff_id), date: r.date, 
+                        soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
+                        soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
+                        totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
+                        returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
+                        availReload: r.avail_reload, syncStatus: 'synced'
+                    });
                 }
             }
         }
 
-        console.log("Parallel Cloud Pull Complete");
+        console.log("Improved Cloud Pull Complete");
         if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Security data ready';
         
         updateDashboardCard();
@@ -2361,7 +2416,7 @@ async function pullFromCloud() {
 
 // --- History View Logic ---
 window.generateHistoryView = async function() {
-    const staffId = String(document.getElementById('history-staff').value);
+    const staffId = document.getElementById('history-staff').value;
     const month = document.getElementById('history-month').value;
     
     if(!staffId || !month) {
@@ -2406,8 +2461,8 @@ window.generateHistoryView = async function() {
 
     sortedDates.forEach(date => {
         // Use loose equality (==) to handle mixed types from local/cloud storage
-        const issue = monthlyIssues.find(i => i.date === date && String(i.staffId) === staffId);
-        const sale = monthlySales.find(s => s.date === date && String(s.staffId) === staffId);
+        const issue = monthlyIssues.find(i => i.date === date && i.staffId == staffId);
+        const sale = monthlySales.find(s => s.date === date && s.staffId == staffId);
 
         // Issue Metrics
         let cardFV = 0;
@@ -2510,7 +2565,6 @@ window.generateHistoryView = async function() {
 }
 
 window.deleteHistoryRecord = async function(date, staffId) {
-    const staffIdStr = String(staffId);
     let res = await Swal.fire({
         title: 'Delete Entire Day?',
         text: `Are you sure you want to delete the records (Issue & Collection) for ${date}? This action cannot be undone.`,
@@ -2526,12 +2580,12 @@ window.deleteHistoryRecord = async function(date, staffId) {
     if(res.isConfirmed) {
         try {
             if (typeof supabaseClient !== 'undefined') {
-                await supabaseClient.from('daily_issues').delete().match({ date: date, staff_id: staffIdStr });
-                await supabaseClient.from('daily_sales').delete().match({ date: date, staff_id: staffIdStr });
+                await supabaseClient.from('daily_issues').delete().match({ date: date, staff_id: staffId });
+                await supabaseClient.from('daily_sales').delete().match({ date: date, staff_id: staffId });
             }
             
-            await db.dailyIssues.where('date').equals(date).and(r => String(r.staffId) === staffIdStr).delete();
-            await db.dailySales.where('date').equals(date).and(r => String(r.staffId) === staffIdStr).delete();
+            await db.dailyIssues.where('date').equals(date).and(r => r.staffId == staffId).delete();
+            await db.dailySales.where('date').equals(date).and(r => r.staffId == staffId).delete();
             
             showToast('Day Record Deleted');
             generateHistoryView(); // refresh the table
