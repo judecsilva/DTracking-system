@@ -28,6 +28,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initial sync connection check (optional)
     if(typeof supabaseClient !== 'undefined') console.log("Supabase Client Ready");
     
+    // --- Data Migration for Version 4 (Add UUIDs and map Staff IDs to UUIDs) ---
+    const migrate = async () => {
+        // 1. Ensure all staff have UUIDs and clean up duplicates
+        const staffs = await db.staff.toArray();
+        const staffMap = {}; // oldId -> uuid
+        const cleanStaff = [];
+        
+        for (const s of staffs) {
+            if (!s.uuid) {
+                s.uuid = generateUUID();
+                s.syncStatus = s.syncStatus || 'pending';
+            }
+            if (s.id) staffMap[s.id] = s.uuid;
+            cleanStaff.push(s);
+        }
+
+        if (cleanStaff.length > 0) {
+            await db.staff.clear();
+            await db.staff.bulkAdd(cleanStaff);
+        }
+
+        // 2. Update dailyIssues and dailySales to use UUIDs as staffId
+        const recordsIssues = await db.dailyIssues.toArray();
+        const cleanIssues = [];
+        for (const r of recordsIssues) {
+            if (!r.uuid) r.uuid = generateUUID();
+            if (staffMap[r.staffId]) r.staffId = staffMap[r.staffId];
+            r.syncStatus = r.syncStatus || 'pending';
+            cleanIssues.push(r);
+        }
+        if (cleanIssues.length > 0) {
+            await db.dailyIssues.clear();
+            await db.dailyIssues.bulkAdd(cleanIssues);
+        }
+
+        const recordsSales = await db.dailySales.toArray();
+        const cleanSales = [];
+        for (const r of recordsSales) {
+            if (!r.uuid) r.uuid = generateUUID();
+            if (staffMap[r.staffId]) r.staffId = staffMap[r.staffId];
+            r.syncStatus = r.syncStatus || 'pending';
+            cleanSales.push(r);
+        }
+        if (cleanSales.length > 0) {
+            await db.dailySales.clear();
+            await db.dailySales.bulkAdd(cleanSales);
+        }
+    };
+    await migrate();
+
     // Check local session
     if(currentUser) {
         showApp();
@@ -484,10 +534,10 @@ async function renderDistributorStats() {
     let html = '';
     
     for (const staff of list) {
-        const sIdNum = staff.id;
+        const sUuid = staff.uuid;
 
         // Get this month's sales for this staff from bulk fetch
-        const staffMonthSales = allMonthSales.filter(s => s.staffId == sIdNum);
+        const staffMonthSales = allMonthSales.filter(s => s.staffId == sUuid);
 
         let totalS = 0;
         let totalC = 0;
@@ -1224,7 +1274,7 @@ function setupEventListeners() {
         // Staff check
         let staff = await db.staff.where('phone').equals(user).first();
         if(staff && staff.password === pass) {
-            currentUser = { id: staff.id, name: staff.name, role: 'distributor' };
+            currentUser = { id: staff.uuid, name: staff.name, role: 'distributor' };
             localStorage.setItem('crdms_user', JSON.stringify(currentUser));
             showApp();
         } else {
@@ -1362,10 +1412,11 @@ async function loadStaffDropdowns() {
     if(historyDrop) historyDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
 
     list.forEach(s => {
-        issueDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
-        collectDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
-        if(reportDrop) reportDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
-        if(historyDrop) historyDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
+        const sid = s.uuid || s.id;
+        issueDrop.insertAdjacentHTML('beforeend', `<option value="${sid}">${s.name} - ${s.routeName}</option>`);
+        collectDrop.insertAdjacentHTML('beforeend', `<option value="${sid}">${s.name} - ${s.routeName}</option>`);
+        if(reportDrop) reportDrop.insertAdjacentHTML('beforeend', `<option value="${sid}">${s.name} - ${s.routeName}</option>`);
+        if(historyDrop) historyDrop.insertAdjacentHTML('beforeend', `<option value="${sid}">${s.name} - ${s.routeName}</option>`);
     });
 
     // CRITICAL FIX: If a distributor's dropdown gets re-rendered during background cloud sync, we MUST re-select their ID.
@@ -1399,6 +1450,7 @@ async function renderStaffTable() {
     
     tbody.innerHTML = '';
     list.forEach((s, idx) => {
+        const sid = s.uuid || s.id;
         tbody.insertAdjacentHTML('beforeend', `
             <tr class="hover:bg-slate-800/50 transition-colors">
                 <td class="py-3 px-4 text-center font-medium w-8">${idx+1}</td>
@@ -1411,16 +1463,17 @@ async function renderStaffTable() {
                 <td class="py-3 px-4 text-gray-400">${s.routeName}</td>
                 <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(s.target || 0)}</td>
                 <td class="py-3 px-4 text-right">
-                    <button onclick="editStaff('${s.id}')" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
+                    <button onclick="editStaff('${sid}')" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
                         <i class="fas fa-edit"></i>
                     </button>
-                    <button onclick="deleteStaff('${s.id}')" class="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-400/10 transition-colors">
+                    <button onclick="deleteStaff('${sid}')" class="text-red-400 hover:text-red-300 p-2 rounded-lg hover:bg-red-400/10 transition-colors">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>
             </tr>
         `);
     });
+
 }
 
 async function loadPreviousBalances() {
@@ -1581,11 +1634,10 @@ window.cancelStaffEdit = function() {
     document.getElementById('staff-cancel-btn').classList.add('hidden');
 }
 
-window.editStaff = async function(strId) {
-    let id = strId ? (isNaN(strId) ? strId : Number(strId)) : '';
+window.editStaff = async function(id) {
     const s = await db.staff.get(id);
     if(s) {
-        document.getElementById('staff-edit-id').value = s.id;
+        document.getElementById('staff-edit-id').value = s.uuid || s.id;
         document.getElementById('staff-name').value = s.name;
         document.getElementById('staff-joined').value = s.joinedDate || '';
         document.getElementById('staff-sysid').value = s.sysId || '';
@@ -1874,8 +1926,9 @@ async function renderFullStaffSummary(monthStr, container) {
     // Pre-calculate data for ranking
     const staffData = [];
     for (const s of staffs) {
+        const sUuid = s.uuid;
         const salesRecords = await db.dailySales
-            .where('staffId').equals(s.id)
+            .where('staffId').equals(sUuid)
             .filter(r => r.date.startsWith(monthStr))
             .toArray();
 
@@ -2346,25 +2399,33 @@ async function pullFromCloud() {
 
         if(staffRes.data && staffRes.data.length > 0) {
             for (let s of staffRes.data) {
-                const local = await db.staff.get(s.uuid || '');
+                const targetUuid = s.uuid || generateUUID();
+                const local = await db.staff.get(targetUuid);
+                
                 if (!local || local.syncStatus !== 'pending') {
                     await db.staff.put({
-                        uuid: s.uuid || generateUUID(),
+                        uuid: targetUuid,
                         id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, 
                         password: s.password, target: Number(s.target),
                         joinedDate: s.joined_date, sysId: s.sys_id, syncStatus: 'synced'
                     });
                 }
             }
+            // Fix: verify session against staff list using UUID or Phone
             if (currentUser && currentUser.role === 'distributor') {
-                const stillExists = staffRes.data.some(s => s.phone === currentUser.id || s.id == (currentUser.id));
-                if (!stillExists) { logout(); return; }
+                const stillExists = staffRes.data.some(s => s.uuid === currentUser.id || s.phone === currentUser.id || String(s.id) === String(currentUser.id));
+                if (!stillExists) { 
+                    console.warn("Session user no longer found in staff list. Logging out.");
+                    logout(); 
+                    return; 
+                }
             }
         }
 
         if(issueRes.data && issueRes.data.length > 0) {
             for (let r of issueRes.data) {
-                const localByUuid = r.uuid ? await db.dailyIssues.get(r.uuid) : null;
+                const searchSid = r.uuid || "";
+                const localByUuid = searchSid ? await db.dailyIssues.get(searchSid) : null;
                 const localByDate = await db.dailyIssues.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
                 const existing = localByUuid || localByDate;
 
@@ -2382,7 +2443,8 @@ async function pullFromCloud() {
 
         if(salesRes.data && salesRes.data.length > 0) {
             for (let r of salesRes.data) {
-                const localByUuid = r.uuid ? await db.dailySales.get(r.uuid) : null;
+                const searchSid = r.uuid || "";
+                const localByUuid = searchSid ? await db.dailySales.get(searchSid) : null;
                 const localByDate = await db.dailySales.where('[date+staffId]').equals([r.date, String(r.staff_id)]).first();
                 const existing = localByUuid || localByDate;
 
@@ -2409,8 +2471,8 @@ async function pullFromCloud() {
         if(typeof renderDistributorStats === 'function') renderDistributorStats();
 
     } catch (err) {
-        console.warn("Pull failed:", err.message);
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode Ready';
+        console.error("Cloud Pull Error:", err);
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode Ready (' + (err.message || 'Network Error') + ')';
     }
 }
 
@@ -2460,9 +2522,8 @@ window.generateHistoryView = async function() {
     let grandTotalShortage = 0;
 
     sortedDates.forEach(date => {
-        // Use loose equality (==) to handle mixed types from local/cloud storage
-        const issue = monthlyIssues.find(i => i.date === date && i.staffId == staffId);
-        const sale = monthlySales.find(s => s.date === date && s.staffId == staffId);
+        const issue = monthlyIssues.find(i => i.date === date && (i.staffId == staffId));
+        const sale = monthlySales.find(s => s.date === date && (s.staffId == staffId));
 
         // Issue Metrics
         let cardFV = 0;
