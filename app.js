@@ -160,9 +160,9 @@ async function showApp() {
         const list = await db.staff.toArray();
         let updated = false;
         for (let s of list) {
-            // Ensure sysId is present and consistent with DB ID if missing or incorrect (e.g. legacy random IDs)
+            // Ensure sysId is present and consistent with DB ID. This corrects duplicates.
             const expectedSysId = 'DS-' + String(s.id).padStart(4, '0');
-            if (!s.sysId || s.sysId.length > 7) { // 7 is length of "DS-9999"
+            if (!s.sysId || s.sysId !== expectedSysId) {
                 await db.staff.update(s.id, { sysId: expectedSysId, syncStatus: 'pending' });
                 updated = true;
             }
@@ -2160,13 +2160,17 @@ async function syncToCloud(table, data, matchFields) {
 }
 async function pullFromCloud() {
     if (typeof supabaseClient === 'undefined') return;
-    
-    await pushPendingToCloud();
+
+    const isManual = arguments.length > 0 && arguments[0] === true;
+    if(isManual) showToast('Syncing data...', 'info');
+
+    try {
+        await pushPendingToCloud();
+    } catch (e) {
+        console.warn("Push failed before pull:", e);
+    }
     
     const statusEl = document.getElementById('login-sync-status');
-    const isManual = arguments.length > 0 && arguments[0] === true;
-    
-    if(isManual) showToast('Syncing data...', 'info');
     if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Syncing security data...';
 
     try {
