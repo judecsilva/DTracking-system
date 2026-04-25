@@ -1,18 +1,17 @@
-const CACHE_NAME = 'crdms-cache-v2';
+const CACHE_NAME = 'crdms-cache-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './app.js',
   './manifest.json',
-  'https://cdn.tailwindcss.com',
+  './icon.png',
+  './lib/dexie.js',
+  './lib/tailwind.js',
+  './lib/sweetalert2.js',
+  './lib/chart.js',
+  './lib/supabase.js',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
-  'https://cdn.jsdelivr.net/npm/sweetalert2@11',
-  'https://cdn.jsdelivr.net/npm/chart.js',
-  'https://unpkg.com/dexie/dist/dexie.js',
-  'https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js',
-  'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
 ];
 
 // Install Event
