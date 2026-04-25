@@ -155,38 +155,19 @@ async function showApp() {
     await updateDashboardCard();
     await renderStaffTable();
 
-    // 4. Data Migration for Old Staff
+    // 4. Data Sanity Check
     if(currentUser.role === 'admin') {
         const list = await db.staff.toArray();
-        let needsSync = false;
-        
-        let maxId = 0;
-        // First pass: Find the legit max ID (ignoring the random 4-digit ones > 1000)
-        list.forEach(s => {
-            if (s.sysId && s.sysId.startsWith('DS-')) {
-                const num = parseInt(s.sysId.replace('DS-', ''), 10);
-                if (!isNaN(num) && num < 1000 && num > maxId) maxId = num;
-            }
-        });
-
+        let updated = false;
         for (let s of list) {
-            // If sysId is missing OR it's a random one (like DS-4821) assigned previously
-            let currentNum = s.sysId ? parseInt(s.sysId.replace('DS-', ''), 10) : 0;
-            if (!s.sysId || currentNum >= 1000) {
-                maxId++;
-                s.sysId = 'DS-' + String(maxId).padStart(4, '0');
-                s.joinedDate = s.joinedDate || new Date().toISOString().split('T')[0];
-                await db.staff.put(s);
-                syncToCloud('staff', {
-                    name: s.name, route_name: s.routeName, phone: s.phone,
-                    password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
-                }, { phone: s.phone });
-                needsSync = true;
+            // Ensure sysId is present and consistent with DB ID if missing or incorrect (e.g. legacy random IDs)
+            const expectedSysId = 'DS-' + String(s.id).padStart(4, '0');
+            if (!s.sysId || s.sysId.length > 7) { // 7 is length of "DS-9999"
+                await db.staff.update(s.id, { sysId: expectedSysId, syncStatus: 'pending' });
+                updated = true;
             }
         }
-        if(needsSync) {
-            await renderStaffTable();
-        }
+        if(updated) await renderStaffTable();
     }
 }
 
@@ -1232,7 +1213,7 @@ function setupEventListeners() {
             
             // Sync specific updated staff
             const s = await db.staff.get(id);
-            syncToCloud('staff', s.uuid, {
+            await syncToCloud('staff', {
                 name: s.name, route_name: s.routeName, phone: s.phone,
                 password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
             }, { phone: s.phone });
@@ -1244,24 +1225,21 @@ function setupEventListeners() {
                 return;
             }
             
-            // Auto-generate a Sequential System ID (e.g., DS-0001)
-            const allStaff = await db.staff.toArray();
-            let maxId = 0;
-            allStaff.forEach(s => {
-                if(s.sysId && s.sysId.startsWith('DS-')) {
-                    const num = parseInt(s.sysId.replace('DS-', ''), 10);
-                    if(!isNaN(num) && num > maxId) maxId = num;
-                }
+            // Add new staff
+            const newId = await db.staff.add({ 
+                name, routeName, phone, password, target, joinedDate, 
+                syncStatus: 'pending' 
             });
-            const sysId = 'DS-' + String(maxId + 1).padStart(4, '0');
-            const targetUuid = generateUUID();
-            
-            await db.staff.add({uuid: targetUuid, name, routeName, phone, password, target, joinedDate, sysId, syncStatus: 'pending'});
+
+            // Generate sysId based on unique auto-incrementing ID
+            const sysId = 'DS-' + String(newId).padStart(4, '0');
+            await db.staff.update(newId, { sysId });
+
             document.getElementById('staff-form').reset();
             showToast('Staff Added');
 
-            const s = await db.staff.get(targetUuid);
-            syncToCloud('staff', s.uuid, {
+            const s = await db.staff.get(newId);
+            await syncToCloud('staff', {
                 name: s.name, route_name: s.routeName, phone: s.phone,
                 password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
             }, { phone: s.phone });
@@ -2186,6 +2164,9 @@ async function pullFromCloud() {
     await pushPendingToCloud();
     
     const statusEl = document.getElementById('login-sync-status');
+    const isManual = arguments.length > 0 && arguments[0] === true;
+    
+    if(isManual) showToast('Syncing data...', 'info');
     if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Syncing security data...';
 
     try {
@@ -2222,6 +2203,7 @@ async function pullFromCloud() {
         })));
 
         if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Security data ready';
+        if(isManual) showToast('Data Synchronized');
         updateDashboardCard();
         loadStaffDropdowns();
         renderStaffTable();
