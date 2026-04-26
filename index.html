@@ -1639,7 +1639,7 @@
                 console.error("Supabase Init Error:", err);
             }
         </script>
-        <script src="app.js?v=3.1"></script>
+        <script src="app.js?v=3.2"></script>
         <script>
             // EMERGENCY RECOVERY SCRIPT (Works even if app.js fails)
             async function forceAppUpdate() {
@@ -1673,8 +1673,29 @@
             if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
                     navigator.serviceWorker.register('./sw.js')
-                        .then(reg => console.log('Service Worker registered', reg))
+                        .then(reg => {
+                            console.log('Service Worker registered');
+                            // Auto-update when new SW is found
+                            reg.onupdatefound = () => {
+                                const newSW = reg.installing;
+                                newSW.onstatechange = () => {
+                                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                                        console.log('New update available! Reloading...');
+                                        window.location.reload();
+                                    }
+                                };
+                            };
+                        })
                         .catch(err => console.error('Service Worker registration failed', err));
+                });
+                
+                // Listen for controller change to reload immediately
+                let refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (!refreshing) {
+                        window.location.reload();
+                        refreshing = true;
+                    }
                 });
             }
         </script>
