@@ -1024,10 +1024,10 @@ async function handleLoadExpectedData(isAuto = false) {
         if(lastSale && lastSale.shortageAmt !== 0) {
             previousShortage = lastSale.shortageAmt;
             if(previousShortage > 0) {
-                pBadge.innerText = `Prev Shortage: Rs. ${previousShortage}`;
+                pBadge.innerText = 'Prev Shortage: Rs. ' + previousShortage;
                 pBadge.className = "mt-1 text-[9px] font-black uppercase text-red-500 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 block w-max";
             } else {
-                pBadge.innerText = `Prev Excess (Credit): Rs. ${Math.abs(previousShortage)}`;
+                pBadge.innerText = 'Prev Excess (Credit): Rs. ' + Math.abs(previousShortage);
                 pBadge.className = "mt-1 text-[9px] font-black uppercase text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 block w-max";
             }
             pBadge.classList.remove('hidden');
