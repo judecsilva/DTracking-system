@@ -2266,63 +2266,61 @@ async function syncToCloud(table, data, matchFields) {
 // keeping only the record with the highest (latest) ID.
 async function deduplicateLocalDB() {
     try {
-        // Deduplicate dailyIssues
-        const allIssues = await db.dailyIssues.toArray();
-        const issueMap = new Map();
-        allIssues.forEach(r => {
-            const key = `${r.date}_${Number(r.staffId)}`;
-            if (!issueMap.has(key) || r.id > issueMap.get(key).id) {
-                issueMap.set(key, r);
+        // Bulk deduplication is much faster than row-by-row
+        const tables = ['dailyIssues', 'dailySales'];
+        for (const tableName of tables) {
+            const allRecords = await db[tableName].toArray();
+            const map = new Map();
+            const toDelete = [];
+            
+            allRecords.forEach(r => {
+                const key = `${r.date}_${r.staffId}`;
+                if (!map.has(key)) {
+                    map.set(key, r);
+                } else {
+                    // Keep the one with syncStatus='synced' if available, otherwise keep newer ID
+                    const existing = map.get(key);
+                    if (r.syncStatus === 'synced' && existing.syncStatus !== 'synced') {
+                        toDelete.push(existing.id);
+                        map.set(key, r);
+                    } else {
+                        toDelete.push(r.id);
+                    }
+                }
+            });
+            
+            if (toDelete.length > 0) {
+                await db[tableName].bulkDelete(toDelete);
+                console.log(`Deduplicated ${tableName}: Removed ${toDelete.length} duplicates.`);
             }
-        });
-        const keepIssueIds = new Set(Array.from(issueMap.values()).map(r => r.id));
-        const dupIssueIds = allIssues.filter(r => !keepIssueIds.has(r.id)).map(r => r.id);
-        if (dupIssueIds.length > 0) {
-            await db.dailyIssues.bulkDelete(dupIssueIds);
-            console.log(`Dedup: Removed ${dupIssueIds.length} duplicate issue record(s).`);
-        }
-
-        // Deduplicate dailySales
-        const allSales = await db.dailySales.toArray();
-        const salesMap = new Map();
-        allSales.forEach(r => {
-            const key = `${r.date}_${Number(r.staffId)}`;
-            if (!salesMap.has(key) || r.id > salesMap.get(key).id) {
-                salesMap.set(key, r);
-            }
-        });
-        const keepSaleIds = new Set(Array.from(salesMap.values()).map(r => r.id));
-        const dupSaleIds = allSales.filter(r => !keepSaleIds.has(r.id)).map(r => r.id);
-        if (dupSaleIds.length > 0) {
-            await db.dailySales.bulkDelete(dupSaleIds);
-            console.log(`Dedup: Removed ${dupSaleIds.length} duplicate sale record(s).`);
         }
     } catch (e) {
         console.warn('Deduplication pass failed:', e);
     }
 }
 
+
 async function pullFromCloud() {
-    // --- Detect manual trigger FIRST (before any early returns) ---
     const isManual = arguments.length > 0 && arguments[0] === true;
+    const statusEl = document.getElementById('login-sync-status');
+    
     if(isManual) showToast('Syncing data...', 'info');
 
     if (typeof supabaseClient === 'undefined') {
-        if(isManual) showToast('No cloud connection available (offline mode)', 'error');
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-wifi-slash text-gray-400 mr-1"></i> Offline Mode Ready';
+        if(isManual) showToast('No cloud connection available', 'error');
         return;
     }
 
+    if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Connecting to cloud...';
+
     try {
+        // 1. Push pending changes first
         await pushPendingToCloud();
-    } catch (e) {
-        console.warn("Push failed before pull:", e);
-    }
-    
-    const statusEl = document.getElementById('login-sync-status');
-    if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Syncing security data...';
 
-
-    try {
+        // 2. Fetch all data in parallel
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Fetching security data...';
+        
         const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
             supabaseClient.from('settings').select('*'),
             supabaseClient.from('staff').select('*'),
@@ -2330,17 +2328,25 @@ async function pullFromCloud() {
             supabaseClient.from('daily_sales').select('*')
         ]);
 
-        if (sRes.data) await db.settings.bulkPut(sRes.data.map(s => ({
-            id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
-            adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
-        })));
+        if (staffRes.error) throw staffRes.error;
 
-        if (staffRes.data) await db.staff.bulkPut(staffRes.data.map(s => ({
-            id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, 
-            password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id
-        })));
+        // 3. Process Settings
+        if (sRes.data) {
+            await db.settings.bulkPut(sRes.data.map(s => ({
+                id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
+                adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
+            })));
+        }
 
-        // --- Smart Merge for Issues (prevent duplicates by ID conflict) ---
+        // 4. Process Staff
+        if (staffRes.data) {
+            await db.staff.bulkPut(staffRes.data.map(s => ({
+                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, 
+                password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id
+            })));
+        }
+
+        // 5. Process Issues with Bulk Logic
         if (issueRes.data && issueRes.data.length > 0) {
             const mappedIssues = issueRes.data.map(r => ({
                 id: r.id, staffId: r.staff_id, date: r.date,
@@ -2348,17 +2354,19 @@ async function pullFromCloud() {
                 reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
                 syncStatus: 'synced'
             }));
-            // For each cloud record, remove any local record with the same date+staffId but different id
-            for (const rec of mappedIssues) {
-                await db.dailyIssues
-                    .where('[date+staffId]').equals([rec.date, rec.staffId])
-                    .and(r => r.id !== rec.id)
-                    .delete();
+            
+            // Delete local records that are about to be overwritten to ensure no [date+staffId] conflicts
+            const issueKeys = mappedIssues.map(r => [r.date, r.staffId]);
+            // (IndexedDB doesn't support bulk delete by compound key easily without a loop, 
+            // but we can optimize by only deleting if the ID is different)
+            for(const rec of mappedIssues) {
+                const existing = await db.dailyIssues.where('[date+staffId]').equals([rec.date, rec.staffId]).first();
+                if(existing && existing.id !== rec.id) await db.dailyIssues.delete(existing.id);
             }
             await db.dailyIssues.bulkPut(mappedIssues);
         }
 
-        // --- Smart Merge for Sales (prevent duplicates by ID conflict) ---
+        // 6. Process Sales with Bulk Logic
         if (salesRes.data && salesRes.data.length > 0) {
             const mappedSales = salesRes.data.map(r => ({
                 id: r.id, staffId: r.staff_id, date: r.date,
@@ -2368,28 +2376,30 @@ async function pullFromCloud() {
                 returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
                 availReload: r.avail_reload, syncStatus: 'synced'
             }));
-            // For each cloud record, remove any local record with the same date+staffId but different id
-            for (const rec of mappedSales) {
-                await db.dailySales
-                    .where('[date+staffId]').equals([rec.date, rec.staffId])
-                    .and(r => r.id !== rec.id)
-                    .delete();
+            
+            for(const rec of mappedSales) {
+                const existing = await db.dailySales.where('[date+staffId]').equals([rec.date, rec.staffId]).first();
+                if(existing && existing.id !== rec.id) await db.dailySales.delete(existing.id);
             }
             await db.dailySales.bulkPut(mappedSales);
         }
 
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Security data ready';
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> System Ready';
         if(isManual) showToast('Data Synchronized');
-        updateDashboardCard();
+        
+        // Refresh UI
         loadStaffDropdowns();
         renderStaffTable();
+        updateDashboardCard();
         updateSyncStatusIndicator();
+
     } catch (err) {
-        console.warn("Pull failed:", err.message);
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode Ready';
+        console.warn("Pull failed:", err);
+        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode';
         updateSyncStatusIndicator();
     }
 }
+
 
 
 // --- History View Logic ---
