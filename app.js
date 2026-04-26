@@ -2574,3 +2574,9 @@ window.printHistoryReport = function() {
         document.body.classList.remove('print-history');
     }, 1000);
 }
+
+// --- Global Manual Sync Trigger (Settings) ---
+window.manualCloudSync = function() {
+    pullFromCloud(true);
+}
+
