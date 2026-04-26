@@ -13,6 +13,14 @@ let performanceChart = null;
 
 // --- State & DOM Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
+    // 1. Initial Database Connection Check
+    try {
+        await db.open();
+        console.log("Database connected successfully.");
+    } catch (err) {
+        console.error("Database connection failed:", err);
+    }
+
     // Initial sync connection check (optional)
     if(typeof supabaseClient !== 'undefined') console.log("Supabase Client Ready");
     
@@ -76,49 +84,65 @@ async function updateSyncStatusIndicator() {
     if (indicators.length === 0) return;
 
     if (!navigator.onLine) {
-        indicators.forEach(ind => {
-            const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500') || ind.querySelector('.bg-slate-600');
-            const ping = ind.querySelector('.animate-ping');
-            if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 md:h-3 md:w-3 bg-rose-500';
-            if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75';
-        });
+        setIndicatorState(indicators, 'rose');
         if(dbText) dbText.innerText = "Offline - Data Saved Locally";
         if(loginStatusText) {
             loginStatusText.innerText = "Offline Mode";
             loginStatusText.className = "text-[10px] font-black uppercase tracking-widest text-rose-400";
         }
     } else {
-        const pendingIssues = await db.dailyIssues.where('syncStatus').equals('pending').count();
-        const pendingSales = await db.dailySales.where('syncStatus').equals('pending').count();
-        const totalPending = pendingIssues + pendingSales;
+        try {
+            // Ensure DB is open before querying
+            if(!db.isOpen()) await db.open();
 
-        if (totalPending > 0) {
-            indicators.forEach(ind => {
-                const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500') || ind.querySelector('.bg-slate-600');
-                const ping = ind.querySelector('.animate-ping');
-                if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 md:h-3 md:w-3 bg-amber-500';
-                if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
-            });
-            if(dbText) dbText.innerText = `Syncing... (${totalPending} pending)`;
-            if(loginStatusText) {
-                loginStatusText.innerText = "Syncing Data...";
-                loginStatusText.className = "text-[10px] font-black uppercase tracking-widest text-amber-400";
+            // Non-blocking count check (timeout after 2s)
+            const countPromise = Promise.all([
+                db.dailyIssues.where('syncStatus').equals('pending').count(),
+                db.dailySales.where('syncStatus').equals('pending').count()
+            ]);
+            const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000));
+            
+            const [pendingIssues, pendingSales] = await Promise.race([countPromise, timeout]);
+            const totalPending = pendingIssues + pendingSales;
+
+            if (totalPending > 0) {
+                setIndicatorState(indicators, 'amber');
+                if(dbText) dbText.innerText = `Syncing... (${totalPending} pending)`;
+                if(loginStatusText) {
+                    loginStatusText.innerText = "Syncing Data...";
+                    loginStatusText.className = "text-[10px] font-black uppercase tracking-widest text-amber-400";
+                }
+            } else {
+                setIndicatorState(indicators, 'emerald');
+                if(dbText) dbText.innerText = "Cloud Synchronized";
+                if(loginStatusText) {
+                    loginStatusText.innerText = "System Ready";
+                    loginStatusText.className = "text-[10px] font-black uppercase tracking-widest text-emerald-400";
+                }
             }
-        } else {
-            indicators.forEach(ind => {
-                const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500') || ind.querySelector('.bg-slate-600');
-                const ping = ind.querySelector('.animate-ping');
-                if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 md:h-3 md:w-3 bg-emerald-500';
-                if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
-            });
-            if(dbText) dbText.innerText = "Cloud Synchronized";
-            if(loginStatusText) {
-                loginStatusText.innerText = "System Ready";
-                loginStatusText.className = "text-[10px] font-black uppercase tracking-widest text-emerald-400";
-            }
+        } catch (e) {
+            // Fallback if DB is slow or count fails
+            setIndicatorState(indicators, 'emerald'); // Assume ready if we can't count
         }
     }
 }
+
+function setIndicatorState(indicators, color) {
+    const colors = {
+        rose: { dot: 'bg-rose-500', ping: 'bg-rose-400' },
+        amber: { dot: 'bg-amber-500', ping: 'bg-amber-400' },
+        emerald: { dot: 'bg-emerald-500', ping: 'bg-emerald-400' },
+        slate: { dot: 'bg-slate-600', ping: 'bg-slate-500' }
+    };
+    const c = colors[color] || colors.slate;
+    indicators.forEach(ind => {
+        const dot = ind.querySelector('span:not(.animate-ping)');
+        const ping = ind.querySelector('.animate-ping');
+        if(dot) dot.className = `relative inline-flex rounded-full h-3 w-3 ${c.dot}`;
+        if(ping) ping.className = `animate-ping absolute inline-flex h-full w-full rounded-full ${c.ping} opacity-75`;
+    });
+}
+
 
 
 
@@ -1020,8 +1044,6 @@ async function handleLoadExpectedData(isAuto = false) {
         calculateExpectedCash();
         if(!isAuto) showToast('Day setup data loaded');
     } catch(err) { console.error(err); if(!isAuto) showToast('Failed to load data', 'error'); }
-}
-
 }
 
 window.clearCollectionForm = function() {
@@ -2332,6 +2354,8 @@ async function deduplicateLocalDB() {
     } catch (e) {
         console.warn('Deduplication pass failed:', e);
     }
+}
+
 async function pullFromCloud() {
     const isManual = arguments.length > 0 && arguments[0] === true;
     const loginSubtext = document.getElementById('login-sync-status-subtext');
@@ -2344,82 +2368,85 @@ async function pullFromCloud() {
         return;
     }
 
-    if(loginSubtext) loginSubtext.innerText = "Connecting to central server...";
+    if(loginSubtext) loginSubtext.innerText = "Connecting to cloud...";
 
     try {
-        // Push pending changes first (if any)
-        await pushPendingToCloud().catch(e => console.warn("Push failed:", e));
-        
-        if(loginSubtext) loginSubtext.innerText = "Fetching security records (5s timeout)...";
-        
-        // 5-second timeout for cloud requests
+        // Overall Timeout for the whole sync process
         const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('CLOUD_TIMEOUT')), 5000)
+            setTimeout(() => reject(new Error('SYNC_TIMEOUT')), 10000)
         );
 
-        const fetchPromise = Promise.all([
-            supabaseClient.from('settings').select('*'),
-            supabaseClient.from('staff').select('*'),
-            supabaseClient.from('daily_issues').select('*'),
-            supabaseClient.from('daily_sales').select('*')
-        ]);
+        const syncTask = (async () => {
+            // Ensure DB is open first
+            if(!db.isOpen()) await db.open();
 
-        const results = await Promise.race([fetchPromise, timeoutPromise]);
-        const [sRes, staffRes, issueRes, salesRes] = results;
+            // 1. Push
+            await pushPendingToCloud().catch(e => console.warn("Push failed:", e));
+            
+            if(loginSubtext) loginSubtext.innerText = "Fetching latest records...";
+            
+            // 2. Pull
+            const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
+                supabaseClient.from('settings').select('*'),
+                supabaseClient.from('staff').select('*'),
+                supabaseClient.from('daily_issues').select('*'),
+                supabaseClient.from('daily_sales').select('*')
+            ]);
 
-        if (staffRes.error) throw staffRes.error;
+            if (staffRes.error) throw staffRes.error;
 
-        if (sRes.data) await db.settings.bulkPut(sRes.data.map(s => ({
-            id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
-            adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
-        })));
+            if (sRes.data) await db.settings.bulkPut(sRes.data.map(s => ({
+                id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
+                adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
+            })));
 
-        if (staffRes.data) await db.staff.bulkPut(staffRes.data.map(s => ({
-            id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, 
-            password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id
-        })));
+            if (staffRes.data) await db.staff.bulkPut(staffRes.data.map(s => ({
+                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, 
+                password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id
+            })));
 
-        if (issueRes.data && issueRes.data.length > 0) {
-            const mappedIssues = issueRes.data.map(r => ({
-                id: r.id, staffId: r.staff_id, date: r.date,
-                card48: r.card48, card95: r.card95, card96: r.card96,
-                reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
-                syncStatus: 'synced'
-            }));
-            for(const rec of mappedIssues) {
-                const existing = await db.dailyIssues.where('[date+staffId]').equals([rec.date, rec.staffId]).first();
-                if(existing && existing.id !== rec.id) await db.dailyIssues.delete(existing.id);
+            if (issueRes.data) {
+                const mapped = issueRes.data.map(r => ({
+                    id: r.id, staffId: r.staff_id, date: r.date,
+                    card48: r.card48, card95: r.card95, card96: r.card96,
+                    reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
+                    syncStatus: 'synced'
+                }));
+                // Bulk clean duplicates
+                for(const r of mapped) {
+                    const ex = await db.dailyIssues.where('[date+staffId]').equals([r.date, r.staffId]).first();
+                    if(ex && ex.id !== r.id) await db.dailyIssues.delete(ex.id);
+                }
+                await db.dailyIssues.bulkPut(mapped);
             }
-            await db.dailyIssues.bulkPut(mappedIssues);
-        }
 
-        if (salesRes.data && salesRes.data.length > 0) {
-            const mappedSales = salesRes.data.map(r => ({
-                id: r.id, staffId: r.staff_id, date: r.date,
-                soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96,
-                soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash),
-                totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
-                returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
-                availReload: r.avail_reload, syncStatus: 'synced'
-            }));
-            for(const rec of mappedSales) {
-                const existing = await db.dailySales.where('[date+staffId]').equals([rec.date, rec.staffId]).first();
-                if(existing && existing.id !== rec.id) await db.dailySales.delete(existing.id);
+            if (salesRes.data) {
+                const mapped = salesRes.data.map(r => ({
+                    id: r.id, staffId: r.staff_id, date: r.date,
+                    soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96,
+                    soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash),
+                    totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
+                    returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
+                    avail_reload: r.avail_reload, syncStatus: 'synced'
+                }));
+                for(const r of mapped) {
+                    const ex = await db.dailySales.where('[date+staffId]').equals([r.date, r.staffId]).first();
+                    if(ex && ex.id !== r.id) await db.dailySales.delete(ex.id);
+                }
+                await db.dailySales.bulkPut(mapped);
             }
-            await db.dailySales.bulkPut(mappedSales);
-        }
+        })();
 
-        if(loginSubtext) loginSubtext.innerText = "All records synchronized";
+        await Promise.race([syncTask, timeoutPromise]);
+
+        if(loginSubtext) loginSubtext.innerText = "System Synchronized";
         updateSyncStatusIndicator();
 
     } catch (err) {
-        console.warn("Pull failed:", err);
+        console.warn("Sync error/timeout:", err);
         if(loginSubtext) {
-            if(err.message === 'CLOUD_TIMEOUT') {
-                loginSubtext.innerHTML = '<span class="text-rose-400">Cloud Timeout.</span> Using local data.';
-            } else {
-                loginSubtext.innerText = "Offline Mode: Project may be paused.";
-            }
+            if(err.message === 'SYNC_TIMEOUT') loginSubtext.innerHTML = '<span class="text-amber-500">Cloud taking too long.</span> Entering Offline Mode.';
+            else loginSubtext.innerText = "Offline Mode Ready";
         }
         updateSyncStatusIndicator();
     }
