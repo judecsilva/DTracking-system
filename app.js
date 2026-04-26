@@ -943,7 +943,6 @@ async function handleLoadExpectedData(isAuto = false) {
         return;
     }
 
-
     try {
         // 1. Try to fetch today's Issue record
         let issued = await db.dailyIssues.where('[date+staffId]').equals([date, staffId]).first();
@@ -987,7 +986,6 @@ async function handleLoadExpectedData(isAuto = false) {
             document.getElementById('collection-details').classList.add('hidden');
             return;
         }
-
 
         currentIssuedData = issued;
         document.getElementById('collection-details').classList.remove('hidden');
@@ -1103,7 +1101,6 @@ function calculateExpectedCash() {
     const totalComm = commCard + commReload;
 
     // Expected Cash logic: (Cards at Cost) + (Full Reload) + (Prev Debt)
-    // Commission is NOT subtracted from the cash expected.
     const todaySalesOnly = totalCardsValue + sReload; 
     const todayExpected = totalCardsValue + sReload;
     const expected = todayExpected + previousShortage;
