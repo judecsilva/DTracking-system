@@ -110,6 +110,9 @@ async function showApp() {
     document.getElementById('display-user-name').innerText = currentUser.name || 'CRDMS User';
     document.getElementById('display-user-role').innerText = currentUser.role.toUpperCase() + ' MODE';
 
+    // 0. Silent background deduplication — cleans any ID-conflict duplicates silently
+    deduplicateLocalDB();
+
     // 1. FIRST: Load the DOM structural data
     await loadStaffDropdowns();
 
@@ -1734,11 +1737,11 @@ window.resetSystem = async function() {
                 
                 // 3. Re-create and open to avoid "Database is closed" errors before reload
                 const newDb = new Dexie("DistributionDB");
-                newDb.version(3).stores({
+                newDb.version(4).stores({
                     settings: '++id, targetAmount, adminPassword',
-                    staff: '++id, name, routeName, phone, password',
-                    dailyIssues: '++id, staffId, date, [date+staffId]',
-                    dailySales: '++id, staffId, date, [date+staffId]'
+                    staff: '++id, name, routeName, phone, password, syncStatus',
+                    dailyIssues: '++id, staffId, date, syncStatus, [date+staffId]',
+                    dailySales: '++id, staffId, date, syncStatus, [date+staffId]'
                 });
                 await newDb.open();
                 
@@ -1819,11 +1822,18 @@ async function renderFullStaffSummary(monthStr, container) {
     // Pre-calculate data for ranking
     const staffData = [];
     for (const s of staffs) {
-        const sUuid = s.uuid;
-        const salesRecords = await db.dailySales
-            .where('staffId').equals(sUuid)
+        const sId = s.id;
+        let salesRecords = await db.dailySales
+            .where('staffId').equals(sId)
             .filter(r => r.date.startsWith(monthStr))
             .toArray();
+        // Also try string version for cross-device compatibility
+        if (salesRecords.length === 0) {
+            salesRecords = await db.dailySales
+                .where('staffId').equals(String(sId))
+                .filter(r => r.date.startsWith(monthStr))
+                .toArray();
+        }
 
         let totalS = 0;
         let totalC = 0;
@@ -2043,14 +2053,23 @@ async function updateStaffPerformanceDisplay(staffId) {
     }
 
     try {
-        const staff = await db.staff.get(staffId);
+        // Ensure consistent numeric ID lookup
+        const numId = isNaN(staffId) ? staffId : Number(staffId);
+        const staff = await db.staff.get(numId);
         if(!staff) return;
 
         const currentMonth = getCurrentMonthString();
-        const sales = await db.dailySales
-            .where('staffId').equals(staffId)
+        let sales = await db.dailySales
+            .where('staffId').equals(numId)
             .filter(r => r.date.startsWith(currentMonth))
             .toArray();
+        // Fallback: try string ID if nothing found
+        if (sales.length === 0) {
+            sales = await db.dailySales
+                .where('staffId').equals(String(numId))
+                .filter(r => r.date.startsWith(currentMonth))
+                .toArray();
+        }
 
         const monthAchieved = sales.reduce((sum, r) => {
             const cardVal = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96);
@@ -2158,6 +2177,47 @@ async function syncToCloud(table, data, matchFields) {
         console.warn(`Sync failed for ${table}:`, err.message);
     }
 }
+// --- Deduplication Helper ---
+// Removes duplicate local records that share the same date+staffId
+// keeping only the record with the highest (latest) ID.
+async function deduplicateLocalDB() {
+    try {
+        // Deduplicate dailyIssues
+        const allIssues = await db.dailyIssues.toArray();
+        const issueMap = new Map();
+        allIssues.forEach(r => {
+            const key = `${r.date}_${Number(r.staffId)}`;
+            if (!issueMap.has(key) || r.id > issueMap.get(key).id) {
+                issueMap.set(key, r);
+            }
+        });
+        const keepIssueIds = new Set(Array.from(issueMap.values()).map(r => r.id));
+        const dupIssueIds = allIssues.filter(r => !keepIssueIds.has(r.id)).map(r => r.id);
+        if (dupIssueIds.length > 0) {
+            await db.dailyIssues.bulkDelete(dupIssueIds);
+            console.log(`Dedup: Removed ${dupIssueIds.length} duplicate issue record(s).`);
+        }
+
+        // Deduplicate dailySales
+        const allSales = await db.dailySales.toArray();
+        const salesMap = new Map();
+        allSales.forEach(r => {
+            const key = `${r.date}_${Number(r.staffId)}`;
+            if (!salesMap.has(key) || r.id > salesMap.get(key).id) {
+                salesMap.set(key, r);
+            }
+        });
+        const keepSaleIds = new Set(Array.from(salesMap.values()).map(r => r.id));
+        const dupSaleIds = allSales.filter(r => !keepSaleIds.has(r.id)).map(r => r.id);
+        if (dupSaleIds.length > 0) {
+            await db.dailySales.bulkDelete(dupSaleIds);
+            console.log(`Dedup: Removed ${dupSaleIds.length} duplicate sale record(s).`);
+        }
+    } catch (e) {
+        console.warn('Deduplication pass failed:', e);
+    }
+}
+
 async function pullFromCloud() {
     if (typeof supabaseClient === 'undefined') return;
 
@@ -2191,20 +2251,43 @@ async function pullFromCloud() {
             password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id
         })));
 
-        if (issueRes.data) await db.dailyIssues.bulkPut(issueRes.data.map(r => ({
-            id: r.id, staffId: r.staff_id, date: r.date, 
-            card48: r.card48, card95: r.card95, card96: r.card96, 
-            reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value)
-        })));
+        // --- Smart Merge for Issues (prevent duplicates by ID conflict) ---
+        if (issueRes.data && issueRes.data.length > 0) {
+            const mappedIssues = issueRes.data.map(r => ({
+                id: r.id, staffId: r.staff_id, date: r.date,
+                card48: r.card48, card95: r.card95, card96: r.card96,
+                reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
+                syncStatus: 'synced'
+            }));
+            // For each cloud record, remove any local record with the same date+staffId but different id
+            for (const rec of mappedIssues) {
+                await db.dailyIssues
+                    .where('[date+staffId]').equals([rec.date, rec.staffId])
+                    .and(r => r.id !== rec.id)
+                    .delete();
+            }
+            await db.dailyIssues.bulkPut(mappedIssues);
+        }
 
-        if (salesRes.data) await db.dailySales.bulkPut(salesRes.data.map(r => ({
-            id: r.id, staffId: r.staff_id, date: r.date, 
-            soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96, 
-            soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash), 
-            totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
-            returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
-            availReload: r.avail_reload
-        })));
+        // --- Smart Merge for Sales (prevent duplicates by ID conflict) ---
+        if (salesRes.data && salesRes.data.length > 0) {
+            const mappedSales = salesRes.data.map(r => ({
+                id: r.id, staffId: r.staff_id, date: r.date,
+                soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96,
+                soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash),
+                totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
+                returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
+                availReload: r.avail_reload, syncStatus: 'synced'
+            }));
+            // For each cloud record, remove any local record with the same date+staffId but different id
+            for (const rec of mappedSales) {
+                await db.dailySales
+                    .where('[date+staffId]').equals([rec.date, rec.staffId])
+                    .and(r => r.id !== rec.id)
+                    .delete();
+            }
+            await db.dailySales.bulkPut(mappedSales);
+        }
 
         if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> Security data ready';
         if(isManual) showToast('Data Synchronized');
@@ -2219,12 +2302,15 @@ async function pullFromCloud() {
 
 // --- History View Logic ---
 window.generateHistoryView = async function() {
-    const staffId = document.getElementById('history-staff').value;
+    const staffIdRaw = document.getElementById('history-staff').value;
     const month = document.getElementById('history-month').value;
     
-    if(!staffId || !month) {
+    if(!staffIdRaw || !month) {
         return Swal.fire({ icon: 'warning', title: 'Missing Info', text: 'Please select a distributor and a month.', background: '#1e293b', color: '#fff'});
     }
+
+    // Coerce to consistent numeric ID
+    const staffId = isNaN(staffIdRaw) ? staffIdRaw : Number(staffIdRaw);
 
     const staff = await db.staff.get(staffId);
     if(!staff) return;
@@ -2232,9 +2318,17 @@ window.generateHistoryView = async function() {
     document.getElementById('history-title-name').innerText = staff.name + ' (' + staff.routeName + ')';
     document.getElementById('history-title-month').innerText = 'System Records for: ' + month;
 
-    // Fetch records for month
-    const issues = await db.dailyIssues.where('staffId').equals(staffId).toArray();
-    const sales = await db.dailySales.where('staffId').equals(staffId).toArray();
+    // Fetch records for month — try both numeric and string IDs for compatibility
+    let issues = await db.dailyIssues.where('staffId').equals(staffId).toArray();
+    let sales = await db.dailySales.where('staffId').equals(staffId).toArray();
+    if (issues.length === 0) {
+        const strIssues = await db.dailyIssues.where('staffId').equals(String(staffId)).toArray();
+        if (strIssues.length > 0) issues = strIssues;
+    }
+    if (sales.length === 0) {
+        const strSales = await db.dailySales.where('staffId').equals(String(staffId)).toArray();
+        if (strSales.length > 0) sales = strSales;
+    }
 
     const resultArea = document.getElementById('history-result-area');
     const tbody = document.getElementById('history-tbody');
@@ -2263,8 +2357,8 @@ window.generateHistoryView = async function() {
     let grandTotalShortage = 0;
 
     sortedDates.forEach(date => {
-        const issue = monthlyIssues.find(i => i.date === date && (i.staffId == staffId));
-        const sale = monthlySales.find(s => s.date === date && (s.staffId == staffId));
+        const issue = monthlyIssues.find(i => i.date === date && (Number(i.staffId) === Number(staffId)));
+        const sale = monthlySales.find(s => s.date === date && (Number(s.staffId) === Number(staffId)));
 
         // Issue Metrics
         let cardFV = 0;
@@ -2295,6 +2389,10 @@ window.generateHistoryView = async function() {
             if (issue) {
                 cardFV = (issue.card48 * 48) + (issue.card95 * 95) + (issue.card96 * 96);
                 reloadIssued = issue.reloadCash;
+            } else {
+                // Fallback: calculate card face value from sold quantities if no issue record
+                cardFV = (Number(sale.soldCard48||0) * 50) + (Number(sale.soldCard95||0) * 99) + (Number(sale.soldCard96||0) * 100);
+                reloadIssued = Number(sale.availReload || 0);
             }
 
             grandTotalSales += saleAmt;
