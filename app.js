@@ -8,28 +8,38 @@ db.version(4).stores({
 });
 
 
-let currentUser = JSON.parse(localStorage.getItem('crdms_user') || 'null');
+let currentUser = null;
+try {
+    currentUser = JSON.parse(localStorage.getItem('crdms_user') || 'null');
+} catch(e) {
+    console.error("Session load failed:", e);
+    localStorage.removeItem('crdms_user');
+}
 let performanceChart = null;
 
 // --- State & DOM Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Initial Database Connection Check
+    // 0. Initialize Status UI Immediately
+    try { updateSyncStatusIndicator(); } catch(e) {}
+
+    // 1. Initial Database Connection with Timeout
     try {
-        await db.open();
+        const dbOpenTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 5000));
+        await Promise.race([db.open(), dbOpenTimeout]);
         console.log("Database connected successfully.");
     } catch (err) {
-        console.error("Database connection failed:", err);
+        console.error("Database connection issue:", err);
+        const loginSubtext = document.getElementById('login-sync-status-subtext');
+        if(loginSubtext) loginSubtext.innerHTML = '<span class="text-amber-500">Database slow or locked.</span> Refresh recommended.';
     }
 
-    // Initial sync connection check (optional)
-    if(typeof supabaseClient !== 'undefined') console.log("Supabase Client Ready");
-    
     // Check local session
     if(currentUser) {
         showApp();
     } else {
         showLogin();
     }
+
 
     // Set default dates
     document.getElementById('issue-date').value = getTodayString();
@@ -2662,37 +2672,65 @@ window.manualCloudSync = function() {
 }
 
 // --- Emergency Recovery: Force Update & Clear Cache ---
-window.forceAppUpdate = function() {
-    Swal.fire({
-        title: 'Repairing App...',
-        text: 'Clearing cache and updating to the latest version. Please wait...',
-        allowOutsideClick: false,
-        background: '#1e293b',
-        color: '#fff',
-        didOpen: () => {
-            Swal.showLoading();
-            
-            // 1. Unregister Service Workers
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(registrations => {
-                    for (let registration of registrations) registration.unregister();
-                    
-                    // 2. Clear Caches
-                    caches.keys().then(names => {
-                        for (let name of names) caches.delete(name);
-                        
-                        // 3. Clear LocalStorage except user session (to prevent logout if unwanted, but here we want clean slate)
-                        // localStorage.clear(); 
-                        
-                        setTimeout(() => {
-                            location.reload(true);
-                        }, 1000);
-                    });
-                });
-            } else {
-                location.reload(true);
+window.forceAppUpdate = async function() {
+    console.log("Force update triggered...");
+    
+    // Check if Swal is available, otherwise use alert
+    const hasSwal = (typeof Swal !== 'undefined');
+    
+    if (hasSwal) {
+        Swal.fire({
+            title: 'Repairing App...',
+            text: 'Clearing cache and resetting system. Please wait...',
+            allowOutsideClick: false,
+            background: '#1e293b',
+            color: '#fff',
+            didOpen: async () => {
+                Swal.showLoading();
+                await performHardReset();
             }
+        });
+    } else {
+        if(confirm("Repair App? This will clear the cache and reload the system.")) {
+            await performHardReset();
         }
-    });
+    }
 }
+
+async function performHardReset() {
+    try {
+        // 1. Clear Service Workers
+        if ('serviceWorker' in navigator) {
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (let registration of registrations) await registration.unregister();
+            } catch(e) { console.warn("SW Unregister failed", e); }
+        }
+        
+        // 2. Clear Caches
+        if (typeof caches !== 'undefined') {
+            try {
+                const names = await caches.keys();
+                for (let name of names) await caches.delete(name);
+            } catch(e) { console.warn("Cache clear failed", e); }
+        }
+
+        // 3. Delete IndexedDB Database (Dexie)
+        try {
+            await db.delete();
+        } catch(e) { console.warn("DB Delete failed", e); }
+        
+        // 4. Clear LocalStorage
+        localStorage.clear();
+        
+        console.log("Hard reset complete. Reloading...");
+        setTimeout(() => {
+            location.reload(true);
+        }, 1000);
+    } catch (err) {
+        console.error("Hard reset error:", err);
+        location.reload(true);
+    }
+}
+
 
