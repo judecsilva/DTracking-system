@@ -217,6 +217,64 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* ===== MOBILE FIXES ===== */
+        /* Smooth scrolling on Android */
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            overflow-x: hidden;
+            width: 100%;
+            position: relative;
+        }
+        /* Table containers scroll smoothly on touch */
+        .overflow-x-auto {
+            -webkit-overflow-scrolling: touch;
+            overflow-x: auto;
+        }
+        /* On mobile, reduce chart height */
+        @media (max-width: 767px) {
+            .chart-container-mobile {
+                height: 220px !important;
+            }
+            /* Prevent tables from breaking out of container */
+            #app-container {
+                max-width: 100vw;
+                overflow-x: hidden;
+            }
+            /* Nav tab label: hide text, show icon only on very small screens */
+            .nav-label {
+                display: none;
+            }
+            .nav-item {
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+            /* Header button text hidden on mobile */
+            .header-btn-label {
+                display: none;
+            }
+            /* Tighter glass panel padding on mobile */
+            .glass-panel {
+                padding: 0.6rem !important;
+            }
+            /* Slightly bigger touch targets */
+            .nav-item {
+                min-width: 44px;
+                min-height: 44px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
+        @media (min-width: 480px) and (max-width: 767px) {
+            /* Slightly larger phones: show short labels */
+            .nav-label {
+                display: inline;
+                font-size: 0.65rem;
+            }
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -261,59 +319,59 @@
     <div id="app-content" class="hidden min-h-screen">
         <!-- Top Bar -->
         <header
-            class="glass-panel mx-2 mt-2 md:mx-auto md:max-w-5xl rounded-t-2xl border-b-0 py-4 px-4 md:px-6 flex justify-between items-center z-20 relative no-print">
-            <div class="flex items-center space-x-3">
+            class="glass-panel mx-2 mt-2 md:mx-auto md:max-w-5xl rounded-t-2xl border-b-0 py-3 px-3 md:py-4 md:px-6 flex justify-between items-center z-20 relative no-print">
+            <div class="flex items-center space-x-2 md:space-x-3 min-w-0">
                 <div
-                    class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                    <i class="fas fa-user-check text-white"></i>
+                    class="w-9 h-9 md:w-10 md:h-10 flex-shrink-0 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                    <i class="fas fa-user-check text-white text-sm"></i>
                 </div>
-                <div>
-                    <h1 class="text-xl font-bold leading-tight text-white" id="display-user-name">CRDMS</h1>
-                    <p class="text-xs text-indigo-400 tracking-wider font-bold" id="display-user-role">ADMIN MODE</p>
+                <div class="min-w-0">
+                    <h1 class="text-base md:text-xl font-bold leading-tight text-white truncate max-w-[130px] sm:max-w-[200px] md:max-w-none" id="display-user-name">CRDMS</h1>
+                    <p class="text-[10px] md:text-xs text-indigo-400 tracking-wider font-bold truncate" id="display-user-role">ADMIN MODE</p>
                 </div>
             </div>
-            <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2 flex-shrink-0">
                 <button onclick="pullFromCloud(true)"
-                    class="text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-500/30 transition-all flex items-center">
-                    <i class="fas fa-sync-alt mr-1"></i> Sync Now
+                    class="text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-2 md:px-3 py-1.5 rounded-lg border border-indigo-500/30 transition-all flex items-center">
+                    <i class="fas fa-sync-alt"></i><span class="header-btn-label ml-1"> Sync</span>
                 </button>
                 <button onclick="logout()"
-                    class="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 px-3 py-1.5 rounded-lg border border-rose-500/30 transition-all">
-                    <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                    class="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 px-2 md:px-3 py-1.5 rounded-lg border border-rose-500/30 transition-all flex items-center">
+                    <i class="fas fa-sign-out-alt"></i><span class="header-btn-label ml-1"> Out</span>
                 </button>
             </div>
         </header>
 
         <!-- App Container -->
         <div id="app-container"
-            class="max-w-5xl mx-2 md:mx-auto mb-10 relative z-10 glass-panel rounded-b-2xl overflow-hidden min-h-[80vh] flex flex-col shadow-2xl">
+            class="max-w-5xl mx-1 md:mx-auto mb-10 relative z-10 glass-panel rounded-b-2xl overflow-x-hidden min-h-[80vh] flex flex-col shadow-2xl">
 
             <!-- Navigation -->
             <nav
-                class="flex overflow-x-auto space-x-2 md:space-x-8 px-4 md:px-6 pt-5 border-b border-gray-700/50 bg-[#1e293b]/30 no-print">
+                class="flex overflow-x-auto space-x-1 md:space-x-8 px-2 md:px-6 pt-4 md:pt-5 border-b border-gray-700/50 bg-[#1e293b]/30 no-print scrollbar-hide">
                 <button onclick="switchTab('overview')" id="tab-overview"
-                    class="nav-item nav-active pb-4 px-2 font-medium whitespace-nowrap text-sm md:text-base">
-                    <i class="fas fa-chart-pie mr-2"></i> Overview
+                    class="nav-item nav-active pb-3 md:pb-4 px-2 font-medium whitespace-nowrap text-xs md:text-base flex flex-col md:flex-row items-center gap-0.5 md:gap-0">
+                    <i class="fas fa-chart-pie md:mr-2 text-base md:text-sm"></i><span class="nav-label">Overview</span>
                 </button>
                 <button onclick="switchTab('issue')" id="tab-issue"
-                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
-                    <i class="fas fa-box-open mr-2"></i> Issue Stock
+                    class="nav-item pb-3 md:pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-xs md:text-base flex flex-col md:flex-row items-center gap-0.5 md:gap-0">
+                    <i class="fas fa-box-open md:mr-2 text-base md:text-sm"></i><span class="nav-label">Issue</span>
                 </button>
                 <button onclick="switchTab('collection')" id="tab-collection"
-                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
-                    <i class="fas fa-hand-holding-dollar mr-2"></i> Collection
+                    class="nav-item pb-3 md:pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-xs md:text-base flex flex-col md:flex-row items-center gap-0.5 md:gap-0">
+                    <i class="fas fa-hand-holding-dollar md:mr-2 text-base md:text-sm"></i><span class="nav-label">Collect</span>
                 </button>
                 <button onclick="switchTab('settings')" id="tab-settings"
-                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
-                    <i class="fas fa-cog mr-2"></i> Settings
+                    class="nav-item pb-3 md:pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-xs md:text-base flex flex-col md:flex-row items-center gap-0.5 md:gap-0">
+                    <i class="fas fa-cog md:mr-2 text-base md:text-sm"></i><span class="nav-label">Settings</span>
                 </button>
                 <button onclick="switchTab('reports')" id="tab-reports"
-                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
-                    <i class="fas fa-file-invoice-dollar mr-2"></i> Reports
+                    class="nav-item pb-3 md:pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-xs md:text-base flex flex-col md:flex-row items-center gap-0.5 md:gap-0">
+                    <i class="fas fa-file-invoice-dollar md:mr-2 text-base md:text-sm"></i><span class="nav-label">Reports</span>
                 </button>
                 <button onclick="switchTab('history')" id="tab-history"
-                    class="nav-item pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-sm md:text-base">
-                    <i class="fas fa-calendar-alt mr-2"></i> History
+                    class="nav-item pb-3 md:pb-4 px-2 font-medium text-gray-400 whitespace-nowrap text-xs md:text-base flex flex-col md:flex-row items-center gap-0.5 md:gap-0">
+                    <i class="fas fa-calendar-alt md:mr-2 text-base md:text-sm"></i><span class="nav-label">History</span>
                 </button>
             </nav>
 
@@ -386,7 +444,7 @@
                     <!-- Progress Bar -->
                     <div class="glass-panel p-4 md:p-6 mb-8">
                         <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-lg font-medium">Target Progress</h3>
+                            <h3 class="text-base md:text-lg font-medium">Target Progress</h3>
                             <span class="text-xs px-2 py-1 bg-slate-800 rounded text-gray-300 border border-slate-700"
                                 id="days-remaining">...</span>
                         </div>
@@ -401,24 +459,24 @@
                             <span>Target: <span id="progress-target" class="text-white">Rs. 0</span></span>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 mb-8">
                         <!-- Linear Performance Chart -->
-                        <div class="lg:col-span-2 glass-panel p-6 shadow-xl border-indigo-500/10 h-[400px]">
+                        <div class="lg:col-span-2 glass-panel p-4 md:p-6 shadow-xl border-indigo-500/10" style="height: clamp(260px, 45vw, 400px)">
                             <h4
-                                class="text-xs font-black uppercase text-indigo-400 mb-6 tracking-widest border-b border-indigo-500/10 pb-2 flex items-center justify-between">
+                                class="text-xs font-black uppercase text-indigo-400 mb-4 tracking-widest border-b border-indigo-500/10 pb-2 flex items-center justify-between">
                                 Monthly Sales Growth <i class="fas fa-chart-line text-lg"></i>
                             </h4>
-                            <div class="h-[280px]">
+                            <div style="height: calc(100% - 40px)">
                                 <canvas id="performanceChart"></canvas>
                             </div>
                         </div>
                         <!-- Product Mix Chart -->
-                        <div class="glass-panel p-6 shadow-xl border-indigo-500/10 h-[400px]">
+                        <div class="glass-panel p-4 md:p-6 shadow-xl border-indigo-500/10" style="height: clamp(260px, 45vw, 400px)">
                             <h4
-                                class="text-xs font-black uppercase text-rose-400 mb-6 tracking-widest border-b border-rose-500/10 pb-2 flex items-center justify-between">
+                                class="text-xs font-black uppercase text-rose-400 mb-4 tracking-widest border-b border-rose-500/10 pb-2 flex items-center justify-between">
                                 Product Contribution <i class="fas fa-chart-pie text-lg"></i>
                             </h4>
-                            <div class="h-[280px] flex items-center justify-center">
+                            <div style="height: calc(100% - 40px)" class="flex items-center justify-center">
                                 <canvas id="productChart"></canvas>
                             </div>
                         </div>
@@ -550,39 +608,39 @@
                             </div>
                         </div>
 
-                        <!-- Performance Stats Card (New) -->
+                        <!-- Performance Stats Card -->
                         <div id="staff-perf-card"
-                            class="hidden glass-panel p-5 mb-6 border-indigo-500/30 bg-gradient-to-r from-indigo-900/40 to-slate-900/60 shadow-xl overflow-hidden relative">
+                            class="hidden glass-panel p-3 md:p-5 mb-6 border-indigo-500/30 bg-gradient-to-r from-indigo-900/40 to-slate-900/60 shadow-xl overflow-hidden relative">
                             <div class="absolute -right-10 -top-10 opacity-10 rotate-12">
                                 <i class="fas fa-chart-line text-9xl"></i>
                             </div>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
-                                <div class="border-r border-slate-700/50 pr-4">
-                                    <p class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">
+                            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 relative z-10">
+                                <div class="p-2 bg-indigo-500/10 rounded-lg">
+                                    <p class="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">
                                         Monthly Target</p>
-                                    <p class="text-lg font-black text-white" id="perf-monthly-target">Rs. 0</p>
+                                    <p class="text-sm md:text-lg font-black text-white" id="perf-monthly-target">Rs. 0</p>
                                 </div>
-                                <div class="border-r border-slate-700/50 px-4">
-                                    <p class="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">
-                                        Expected Day Target</p>
-                                    <p class="text-lg font-black text-white" id="perf-day-target">Rs. 0</p>
+                                <div class="p-2 bg-emerald-500/10 rounded-lg">
+                                    <p class="text-[8px] font-black text-emerald-400 uppercase tracking-widest mb-1">
+                                        Day Target</p>
+                                    <p class="text-sm md:text-lg font-black text-white" id="perf-day-target">Rs. 0</p>
                                 </div>
-                                <div class="border-r border-slate-700/50 px-4">
-                                    <p class="text-[9px] font-black text-red-500 uppercase tracking-widest mb-1">
-                                        Balance Target</p>
-                                    <p class="text-lg font-black text-white" id="perf-balance-target">Rs. 0</p>
+                                <div class="p-2 bg-red-500/10 rounded-lg">
+                                    <p class="text-[8px] font-black text-red-500 uppercase tracking-widest mb-1">
+                                        Balance</p>
+                                    <p class="text-sm md:text-lg font-black text-white" id="perf-balance-target">Rs. 0</p>
                                 </div>
-                                <div class="border-r border-slate-700/50 px-4">
-                                    <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">
-                                        Achieved (MTD)</p>
-                                    <p class="text-lg font-black text-white" id="perf-achieved">Rs. 0</p>
+                                <div class="p-2 bg-blue-500/10 rounded-lg">
+                                    <p class="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">
+                                        Achieved</p>
+                                    <p class="text-sm md:text-lg font-black text-white" id="perf-achieved">Rs. 0</p>
                                 </div>
-                                <div class="pl-4">
-                                    <p class="text-[9px] font-black text-orange-400 uppercase tracking-widest mb-1">
-                                        Month Progress</p>
+                                <div class="p-2 bg-orange-500/10 rounded-lg col-span-2 md:col-span-1">
+                                    <p class="text-[8px] font-black text-orange-400 uppercase tracking-widest mb-1">
+                                        Progress</p>
                                     <div class="flex items-center space-x-2">
-                                        <p class="text-lg font-black text-white" id="perf-percent">0%</p>
-                                        <div class="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden min-w-[60px]">
+                                        <p class="text-sm md:text-lg font-black text-white" id="perf-percent">0%</p>
+                                        <div class="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden min-w-[40px]">
                                             <div id="perf-bar"
                                                 class="h-full bg-gradient-to-r from-orange-500 to-indigo-500 transition-all duration-500"
                                                 style="width: 0%"></div>
@@ -592,12 +650,12 @@
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                             <!-- Physical Cards -->
-                            <div class="glass-panel p-6 shadow-lg shadow-blue-500/5">
+                            <div class="glass-panel p-3 md:p-6 shadow-lg shadow-blue-500/5">
                                 <h3
-                                    class="text-lg font-semibold mb-5 flex items-center text-blue-400 border-b border-slate-700/50 pb-3">
-                                    <i class="fas fa-sd-card mr-2 text-xl"></i> Cards: Opening & New
+                                    class="text-sm md:text-lg font-semibold mb-3 md:mb-5 flex items-center text-blue-400 border-b border-slate-700/50 pb-2 md:pb-3">
+                                    <i class="fas fa-sd-card mr-2 text-base md:text-xl"></i> Cards: Opening & New
                                 </h3>
                                 <div class="space-y-4">
                                     <!-- Headers -->
@@ -660,11 +718,11 @@
                                 </div>
                             </div>
 
-                            <!-- Digital Value -->
-                            <div class="space-y-6">
-                                <div class="glass-panel p-6 shadow-lg shadow-green-500/5">
+                            <!-- Reload & Summary -->
+                            <div class="space-y-4 md:space-y-6">
+                                <div class="glass-panel p-3 md:p-6 shadow-lg shadow-green-500/5">
                                     <h3
-                                        class="text-lg font-semibold mb-5 flex items-center text-green-400 border-b border-slate-700/50 pb-3">
+                                        class="text-sm md:text-lg font-semibold mb-3 md:mb-5 flex items-center text-green-400 border-b border-slate-700/50 pb-2 md:pb-3">
                                         <i class="fas fa-mobile-alt mr-2"></i> Reload Balance Rollover
                                     </h3>
                                     <div class="grid grid-cols-2 gap-4">
@@ -833,12 +891,12 @@
                             </div>
                         </div>
 
-                        <div id="collection-details" class="hidden space-y-6">
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div id="collection-details" class="hidden space-y-4 md:space-y-6">
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                                 <!-- Stock Activity -->
-                                <div class="glass-panel p-4 md:p-6 shadow-xl">
+                                <div class="glass-panel p-3 md:p-6 shadow-xl">
                                     <h3
-                                        class="text-lg font-semibold mb-5 flex items-center text-blue-400 border-b border-slate-700/50 pb-3">
+                                        class="text-sm md:text-lg font-semibold mb-3 md:mb-5 flex items-center text-blue-400 border-b border-slate-700/50 pb-2 md:pb-3">
                                         <i class="fas fa-calculator mr-2"></i> Stock & Sales Activity
                                     </h3>
                                     <div class="space-y-4">
@@ -910,11 +968,11 @@
                                 </div>
 
                                 <!-- Financial Outcome -->
-                                <div class="space-y-6">
-                                    <div class="glass-panel p-6 shadow-xl border-emerald-500/10">
+                                <div class="space-y-4 md:space-y-6">
+                                    <div class="glass-panel p-3 md:p-6 shadow-xl border-emerald-500/10">
                                         <div
-                                            class="flex justify-between items-center mb-5 border-b border-slate-700/50 pb-3">
-                                            <h3 class="text-lg font-semibold flex items-center text-emerald-400">
+                                            class="flex justify-between items-center mb-3 md:mb-5 border-b border-slate-700/50 pb-2 md:pb-3">
+                                            <h3 class="text-sm md:text-lg font-semibold flex items-center text-emerald-400">
                                                 <i class="fas fa-wallet mr-2"></i> Reload & Commission
                                             </h3>
                                             <div class="text-right">
@@ -942,7 +1000,7 @@
                                                 <label class="block text-xs font-bold text-gray-400 uppercase mb-1">CASH
                                                     HANDED OVER (Rs.)</label>
                                                 <input type="number" id="collect-handcash"
-                                                    class="input-field py-4 px-4 text-center text-3xl font-black text-white bg-slate-900 border-2 border-indigo-500 shadow-[0_0_20px_rgba(79,70,229,0.2)]"
+                                                    class="input-field py-3 md:py-4 px-4 text-center text-xl md:text-3xl font-black text-white bg-slate-900 border-2 border-indigo-500 shadow-[0_0_20px_rgba(79,70,229,0.2)]"
                                                     placeholder="0" min="0" value="0">
                                             </div>
                                         </div>
