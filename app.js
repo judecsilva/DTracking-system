@@ -69,19 +69,24 @@ async function updateSyncStatusIndicator() {
     const headerIndicator = document.getElementById('sync-indicator');
     const dbIndicator = document.getElementById('db-sync-indicator');
     const dbText = document.getElementById('db-sync-text');
+    const loginIndicator = document.getElementById('login-indicator');
+    const loginStatusText = document.getElementById('login-sync-status-text');
     
-    const indicators = [headerIndicator, dbIndicator].filter(el => el !== null);
+    const indicators = [headerIndicator, dbIndicator, loginIndicator].filter(el => el !== null);
     if (indicators.length === 0) return;
 
     if (!navigator.onLine) {
         indicators.forEach(ind => {
-            const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500');
+            const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500') || ind.querySelector('.bg-slate-600');
             const ping = ind.querySelector('.animate-ping');
             if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 md:h-3 md:w-3 bg-rose-500';
             if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75';
         });
         if(dbText) dbText.innerText = "Offline - Data Saved Locally";
-        if(headerIndicator) headerIndicator.title = "Offline Mode";
+        if(loginStatusText) {
+            loginStatusText.innerText = "Offline Mode";
+            loginStatusText.className = "text-[10px] font-black uppercase tracking-widest text-rose-400";
+        }
     } else {
         const pendingIssues = await db.dailyIssues.where('syncStatus').equals('pending').count();
         const pendingSales = await db.dailySales.where('syncStatus').equals('pending').count();
@@ -89,25 +94,32 @@ async function updateSyncStatusIndicator() {
 
         if (totalPending > 0) {
             indicators.forEach(ind => {
-                const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500');
+                const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500') || ind.querySelector('.bg-slate-600');
                 const ping = ind.querySelector('.animate-ping');
                 if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 md:h-3 md:w-3 bg-amber-500';
                 if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
             });
             if(dbText) dbText.innerText = `Syncing... (${totalPending} pending)`;
-            if(headerIndicator) headerIndicator.title = `Syncing (${totalPending} pending)`;
+            if(loginStatusText) {
+                loginStatusText.innerText = "Syncing Data...";
+                loginStatusText.className = "text-[10px] font-black uppercase tracking-widest text-amber-400";
+            }
         } else {
             indicators.forEach(ind => {
-                const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500');
+                const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500') || ind.querySelector('.bg-slate-600');
                 const ping = ind.querySelector('.animate-ping');
                 if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 md:h-3 md:w-3 bg-emerald-500';
                 if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
             });
             if(dbText) dbText.innerText = "Cloud Synchronized";
-            if(headerIndicator) headerIndicator.title = "Cloud Connected";
+            if(loginStatusText) {
+                loginStatusText.innerText = "System Ready";
+                loginStatusText.className = "text-[10px] font-black uppercase tracking-widest text-emerald-400";
+            }
         }
     }
 }
+
 
 
 
@@ -2321,28 +2333,24 @@ async function deduplicateLocalDB() {
         console.warn('Deduplication pass failed:', e);
     }
 }
-
-
 async function pullFromCloud() {
     const isManual = arguments.length > 0 && arguments[0] === true;
-    const statusEl = document.getElementById('login-sync-status');
+    const loginSubtext = document.getElementById('login-sync-status-subtext');
     
     if(isManual) showToast('Syncing data...', 'info');
 
     if (typeof supabaseClient === 'undefined') {
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-wifi-slash text-gray-400 mr-1"></i> Offline Mode Ready';
-        if(isManual) showToast('No cloud connection available', 'error');
+        if(loginSubtext) loginSubtext.innerText = "Offline mode active";
+        updateSyncStatusIndicator();
         return;
     }
 
-    if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Connecting to cloud...';
+    if(loginSubtext) loginSubtext.innerText = "Connecting to central server...";
 
     try {
-        // 1. Push pending changes first
         await pushPendingToCloud();
-
-        // 2. Fetch all data in parallel
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Fetching security data...';
+        
+        if(loginSubtext) loginSubtext.innerText = "Fetching latest security records...";
         
         const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
             supabaseClient.from('settings').select('*'),
@@ -2353,23 +2361,16 @@ async function pullFromCloud() {
 
         if (staffRes.error) throw staffRes.error;
 
-        // 3. Process Settings
-        if (sRes.data) {
-            await db.settings.bulkPut(sRes.data.map(s => ({
-                id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
-                adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
-            })));
-        }
+        if (sRes.data) await db.settings.bulkPut(sRes.data.map(s => ({
+            id: s.id, targetAmount: s.target_amount, workingDays: s.working_days, 
+            adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
+        })));
 
-        // 4. Process Staff
-        if (staffRes.data) {
-            await db.staff.bulkPut(staffRes.data.map(s => ({
-                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, 
-                password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id
-            })));
-        }
+        if (staffRes.data) await db.staff.bulkPut(staffRes.data.map(s => ({
+            id: s.id, name: s.name, routeName: s.route_name, phone: s.phone, 
+            password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id
+        })));
 
-        // 5. Process Issues with Bulk Logic
         if (issueRes.data && issueRes.data.length > 0) {
             const mappedIssues = issueRes.data.map(r => ({
                 id: r.id, staffId: r.staff_id, date: r.date,
@@ -2377,11 +2378,6 @@ async function pullFromCloud() {
                 reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
                 syncStatus: 'synced'
             }));
-            
-            // Delete local records that are about to be overwritten to ensure no [date+staffId] conflicts
-            const issueKeys = mappedIssues.map(r => [r.date, r.staffId]);
-            // (IndexedDB doesn't support bulk delete by compound key easily without a loop, 
-            // but we can optimize by only deleting if the ID is different)
             for(const rec of mappedIssues) {
                 const existing = await db.dailyIssues.where('[date+staffId]').equals([rec.date, rec.staffId]).first();
                 if(existing && existing.id !== rec.id) await db.dailyIssues.delete(existing.id);
@@ -2389,7 +2385,6 @@ async function pullFromCloud() {
             await db.dailyIssues.bulkPut(mappedIssues);
         }
 
-        // 6. Process Sales with Bulk Logic
         if (salesRes.data && salesRes.data.length > 0) {
             const mappedSales = salesRes.data.map(r => ({
                 id: r.id, staffId: r.staff_id, date: r.date,
@@ -2399,7 +2394,6 @@ async function pullFromCloud() {
                 returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
                 availReload: r.avail_reload, syncStatus: 'synced'
             }));
-            
             for(const rec of mappedSales) {
                 const existing = await db.dailySales.where('[date+staffId]').equals([rec.date, rec.staffId]).first();
                 if(existing && existing.id !== rec.id) await db.dailySales.delete(existing.id);
@@ -2407,21 +2401,17 @@ async function pullFromCloud() {
             await db.dailySales.bulkPut(mappedSales);
         }
 
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-check-circle text-emerald-500 mr-1"></i> System Ready';
-        if(isManual) showToast('Data Synchronized');
-        
-        // Refresh UI
-        loadStaffDropdowns();
-        renderStaffTable();
-        updateDashboardCard();
+        if(loginSubtext) loginSubtext.innerText = "All records synchronized";
         updateSyncStatusIndicator();
 
     } catch (err) {
         console.warn("Pull failed:", err);
-        if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode';
+        if(loginSubtext) loginSubtext.innerText = "Using local backup (Offline)";
         updateSyncStatusIndicator();
     }
 }
+
+
 
 
 
