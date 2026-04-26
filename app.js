@@ -58,7 +58,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_issues' }, handleCloudChange)
             .subscribe();
     }
+
+    // --- Connectivity Monitoring ---
+    window.addEventListener('online', updateSyncStatusIndicator);
+    window.addEventListener('offline', updateSyncStatusIndicator);
+    updateSyncStatusIndicator();
 });
+
+async function updateSyncStatusIndicator() {
+    const indicator = document.getElementById('sync-indicator');
+    if (!indicator) return;
+
+    const dot = indicator.querySelector('.bg-emerald-500') || indicator.querySelector('.bg-rose-500') || indicator.querySelector('.bg-amber-500');
+    const ping = indicator.querySelector('.animate-ping');
+
+    if (!navigator.onLine) {
+        if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-rose-500';
+        if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75';
+        indicator.title = "Offline Mode - Data will sync later";
+    } else {
+        const pendingIssues = await db.dailyIssues.where('syncStatus').equals('pending').count();
+        const pendingSales = await db.dailySales.where('syncStatus').equals('pending').count();
+        
+        if (pendingIssues > 0 || pendingSales > 0) {
+            if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
+            if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+            indicator.title = `Syncing... (${pendingIssues + pendingSales} pending)`;
+        } else {
+            if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
+            if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+            indicator.title = "Cloud Connected & Synchronized";
+        }
+    }
+}
+
 
 async function pushPendingToCloud() {
     if (typeof supabaseClient === 'undefined') return;
@@ -66,36 +99,37 @@ async function pushPendingToCloud() {
     // Push Staff
     const pendingStaff = await db.staff.where('syncStatus').equals('pending').toArray();
     for(let s of pendingStaff) {
-        await syncToCloud('staff', {
+        const success = await syncToCloud('staff', {
             name: s.name, route_name: s.routeName, phone: s.phone, password: s.password, target: s.target,
             joined_date: s.joinedDate, sys_id: s.sysId
         }, { phone: s.phone });
-        await db.staff.update(s.id, { syncStatus: 'synced' });
+        if(success) await db.staff.update(s.id, { syncStatus: 'synced' });
     }
 
     // Push Issues
     const pendingIssues = await db.dailyIssues.where('syncStatus').equals('pending').toArray();
     for(let r of pendingIssues) {
-        await syncToCloud('daily_issues', {
+        const success = await syncToCloud('daily_issues', {
             staff_id: r.staffId, date: r.date, card48: r.card48, card95: r.card95, card96: r.card96, 
             reload_cash: r.reloadCash, total_issued_value: r.totalIssuedValue
         }, { staff_id: r.staffId, date: r.date });
-        await db.dailyIssues.update(r.id, { syncStatus: 'synced' });
+        if(success) await db.dailyIssues.update(r.id, { syncStatus: 'synced' });
     }
 
     // Push Sales
     const pendingSales = await db.dailySales.where('syncStatus').equals('pending').toArray();
     for(let r of pendingSales) {
-        await syncToCloud('daily_sales', {
+        const success = await syncToCloud('daily_sales', {
             staff_id: r.staffId, date: r.date, 
             sold_card48: r.soldCard48, sold_card95: r.soldCard95, sold_card96: r.soldCard96, 
             sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash, 
             total_commission: r.totalCommission, shortage_amt: r.shortageAmt,
-            returned_card48: r.returnedCard48, returned_card95: r.returnedCard95, returned_card96: r.returnedCard96,
+            returned_card48: r.returnedCard48, returned_card95: r.returnedCard95, returned_card96: r.returned_card96,
             avail_reload: r.availReload
         }, { staff_id: r.staffId, date: r.date });
-        await db.dailySales.update(r.id, { syncStatus: 'synced' });
+        if(success) await db.dailySales.update(r.id, { syncStatus: 'synced' });
     }
+    updateSyncStatusIndicator();
 }
 
 function showLogin() {
@@ -137,9 +171,18 @@ async function showApp() {
             collectStaff.value = sId;
             issueStaff.disabled = true;
             collectStaff.disabled = true;
+
+            // Hide redundant elements for Distributor
+            document.getElementById('issue-staff-wrap')?.classList.add('hidden');
+            document.getElementById('collect-staff-wrap')?.classList.add('hidden');
+            document.getElementById('btn-load-issue-wrap')?.classList.add('hidden');
+            document.getElementById('issue-edit-btn-wrap')?.classList.add('hidden');
+
             loadPreviousBalances(); 
+            handleLoadExpectedData(true); // Auto-load without toasts
             updateStaffPerformanceDisplay(sId);
         }
+
     } else {
         // Admin: Show EVERYTHING
         tabs.forEach(id => document.getElementById(id).classList.remove('hidden'));
@@ -217,9 +260,10 @@ function switchTab(tabId) {
         if(currentUser.role === 'admin') {
             const issueStaff = document.getElementById('issue-staff');
             if(issueStaff) issueStaff.value = "";
+        } else {
+            // Distributor: Ensure data is loaded
+            loadPreviousBalances();
         }
-        // Universal reset: Clear form values and reload previous balances
-        if(typeof loadPreviousBalances === 'function') loadPreviousBalances();
     }
     
     // Reset History view when entering for Admin
@@ -235,10 +279,14 @@ function switchTab(tabId) {
         if(currentUser.role === 'admin') {
             const collectStaff = document.getElementById('collect-staff');
             if(collectStaff) collectStaff.value = "";
+        } else {
+            // Distributor: Auto-load collection data
+            handleLoadExpectedData(true);
         }
         // Universal clear
-        if(typeof clearCollectionForm === 'function') clearCollectionForm();
+        if(typeof clearCollectionForm === 'function' && currentUser.role === 'admin') clearCollectionForm();
     }
+
 
     // Reset Reports view when entering for Admin
     if(tabId === 'reports' && currentUser.role === 'admin') {
@@ -746,7 +794,7 @@ async function handleIssueSubmit(e) {
         updateDashboardCard();
 
         // --- Online Sync ---
-        await syncToCloud('daily_issues', {
+        const success = await syncToCloud('daily_issues', {
             staff_id: data.staffId,
             date: data.date,
             card48: data.card48,
@@ -755,7 +803,9 @@ async function handleIssueSubmit(e) {
             reload_cash: data.reloadCash,
             total_issued_value: data.totalIssuedValue
         }, { staff_id: data.staffId, date: data.date });
-        await db.dailyIssues.update(existing ? existing.id : data.id, { syncStatus: 'synced' });
+        if(success) await db.dailyIssues.update(existing ? existing.id : data.id, { syncStatus: 'synced' });
+        updateSyncStatusIndicator();
+
 
     } catch(err) {
         console.error(err);
@@ -818,10 +868,14 @@ window.loadIssueForEdit = async function() {
 let currentIssuedData = null; // Cache
 let previousShortage = 0; // State
 
-async function handleLoadExpectedData() {
+async function handleLoadExpectedData(isAuto = false) {
     const date = document.getElementById('collect-date').value;
     const staffId = Number(document.getElementById('collect-staff').value);
-    if(!staffId) return Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
+    if(!staffId) {
+        if(!isAuto) Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
+        return;
+    }
+
 
     try {
         // 1. Try to fetch today's Issue record
@@ -857,15 +911,16 @@ async function handleLoadExpectedData() {
                     card96: fromSales ? (source.returnedCard96 || 0) : (source.card96 || 0),
                     reloadCash: fromSales ? (Number(source.availReload || 0) - Number(source.soldReloadCash || 0)) : (source.reloadCash || 0)
                 };
-                showToast('No issue today: Rolled over yesterday\'s stock', 'info');
+                if(!isAuto) showToast('No issue today: Rolled over yesterday\'s stock', 'info');
             }
         }
 
         if(!issued) {
-            Swal.fire({ icon: 'info', title: 'No Stock Found', text: 'No morning issue or previous carry-over found for this staff.', background: '#1e293b', color: '#fff' });
+            if(!isAuto) Swal.fire({ icon: 'info', title: 'No Stock Found', text: 'No morning issue or previous carry-over found for this staff.', background: '#1e293b', color: '#fff' });
             document.getElementById('collection-details').classList.add('hidden');
             return;
         }
+
 
         currentIssuedData = issued;
         document.getElementById('collection-details').classList.remove('hidden');
@@ -930,8 +985,10 @@ async function handleLoadExpectedData() {
         }
         
         calculateExpectedCash();
-        showToast('Day setup data loaded');
-    } catch(err) { console.error(err); showToast('Failed to load data', 'error'); }
+        if(!isAuto) showToast('Day setup data loaded');
+    } catch(err) { console.error(err); if(!isAuto) showToast('Failed to load data', 'error'); }
+}
+
 }
 
 window.clearCollectionForm = function() {
@@ -1130,7 +1187,7 @@ async function handleCollectionSubmit(e) {
         updateDashboardCard();
 
         // --- Online Sync ---
-        await syncToCloud('daily_sales', {
+        const success = await syncToCloud('daily_sales', {
             staff_id: data.staffId,
             date: data.date,
             sold_card48: data.soldCard48,
@@ -1145,7 +1202,9 @@ async function handleCollectionSubmit(e) {
             returned_card96: data.returnedCard96,
             avail_reload: data.availReload
         }, { staff_id: data.staffId, date: data.date });
-        await db.dailySales.update(existing ? existing.id : data.id, { syncStatus: 'synced' });
+        if(success) await db.dailySales.update(existing ? existing.id : data.id, { syncStatus: 'synced' });
+        updateSyncStatusIndicator();
+
 
     } catch(err) {
         console.error(err);
@@ -2170,13 +2229,17 @@ async function checkBackupReminder() {
 
 // --- Online Sync Helper ---
 async function syncToCloud(table, data, matchFields) {
-    if (typeof supabaseClient === 'undefined') return;
+    if (typeof supabaseClient === 'undefined' || !navigator.onLine) return false;
     try {
-        await supabaseClient.from(table).upsert(data, { onConflict: Object.keys(matchFields).join(',') });
+        const { error } = await supabaseClient.from(table).upsert(data, { onConflict: Object.keys(matchFields).join(',') });
+        if (error) throw error;
+        return true;
     } catch (err) {
         console.warn(`Sync failed for ${table}:`, err.message);
+        return false;
     }
 }
+
 // --- Deduplication Helper ---
 // Removes duplicate local records that share the same date+staffId
 // keeping only the record with the highest (latest) ID.
@@ -2299,11 +2362,14 @@ async function pullFromCloud() {
         updateDashboardCard();
         loadStaffDropdowns();
         renderStaffTable();
+        updateSyncStatusIndicator();
     } catch (err) {
         console.warn("Pull failed:", err.message);
         if(statusEl) statusEl.innerHTML = '<i class="fas fa-exclamation-triangle text-amber-500 mr-1"></i> Offline Mode Ready';
+        updateSyncStatusIndicator();
     }
 }
+
 
 // --- History View Logic ---
 window.generateHistoryView = async function() {

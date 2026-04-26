@@ -326,15 +326,23 @@
                     <i class="fas fa-user-check text-white text-sm"></i>
                 </div>
                 <div class="min-w-0">
-                    <h1 class="text-base md:text-xl font-bold leading-tight text-white truncate max-w-[130px] sm:max-w-[200px] md:max-w-none" id="display-user-name">CRDMS</h1>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-base md:text-xl font-bold leading-tight text-white truncate max-w-[130px] sm:max-w-[200px] md:max-w-none" id="display-user-name">CRDMS</h1>
+                        <!-- Sync Indicator -->
+                        <span id="sync-indicator" class="flex h-2 w-2 relative" title="Cloud Sync Status">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                    </div>
                     <p class="text-[10px] md:text-xs text-indigo-400 tracking-wider font-bold truncate" id="display-user-role">ADMIN MODE</p>
                 </div>
             </div>
             <div class="flex items-center space-x-2 flex-shrink-0">
-                <button onclick="pullFromCloud(true)"
+                <button onclick="pullFromCloud(true)" id="btn-sync-now"
                     class="text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-2 md:px-3 py-1.5 rounded-lg border border-indigo-500/30 transition-all flex items-center">
                     <i class="fas fa-sync-alt"></i><span class="header-btn-label ml-1"> Sync</span>
                 </button>
+
                 <button onclick="logout()"
                     class="text-xs bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 px-2 md:px-3 py-1.5 rounded-lg border border-rose-500/30 transition-all flex items-center">
                     <i class="fas fa-sign-out-alt"></i><span class="header-btn-label ml-1"> Out</span>
@@ -590,7 +598,7 @@
                                     <label class="block text-sm font-medium mb-2 text-gray-300">Issue Date</label>
                                     <input type="date" id="issue-date" class="input-field" required>
                                 </div>
-                                <div>
+                                <div id="issue-staff-wrap">
                                     <label class="block text-sm font-medium mb-2 text-gray-300">Select Staff
                                         Member</label>
                                     <select id="issue-staff" class="input-field bg-slate-800"
@@ -599,7 +607,7 @@
                                         <option value="" disabled selected>Select Staff...</option>
                                     </select>
                                 </div>
-                                <div class="flex space-x-2">
+                                <div class="flex space-x-2" id="issue-edit-btn-wrap">
                                     <button type="button" onclick="loadIssueForEdit()"
                                         class="btn-secondary flex-1 py-[0.65rem] text-xs">
                                         <i class="fas fa-edit mr-1"></i> Load Edit
@@ -607,6 +615,7 @@
                                 </div>
                             </div>
                         </div>
+
 
                         <!-- Performance Stats Card -->
                         <div id="staff-perf-card"
@@ -875,7 +884,7 @@
                                 <input type="date" id="collect-date" class="input-field"
                                     onchange="clearCollectionForm();" required>
                             </div>
-                            <div>
+                            <div id="collect-staff-wrap">
                                 <label class="block text-xs font-bold mb-2 text-gray-400 uppercase">Staff Member</label>
                                 <select id="collect-staff" class="input-field"
                                     onchange="updateStaffPerformanceDisplay(this.value); clearCollectionForm();"
@@ -883,13 +892,14 @@
                                     <option value="" disabled selected>Select Staff...</option>
                                 </select>
                             </div>
-                            <div>
+                            <div id="btn-load-issue-wrap">
                                 <button type="button" id="btn-load-issue"
                                     class="btn-secondary w-full py-[0.65rem] font-bold text-blue-400 border-blue-500/30 hover:bg-blue-500/10">
                                     <i class="fas fa-sync mr-2"></i> LOAD DAY'S DATA
                                 </button>
                             </div>
                         </div>
+
 
                         <div id="collection-details" class="hidden space-y-4 md:space-y-6">
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
@@ -1599,8 +1609,9 @@
         </div> <!-- End app-content -->
 
         <!-- API & App Logic Scripts -->
-        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+        <script src="lib/supabase.js"></script>
         <script>
+
             console.log("Initializing Supabase...");
             const SUPABASE_URL = "https://ayshfnqysfisfxlsgjwa.supabase.co";
             const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5c2hmbnF5c2Zpc2Z4bHNnandhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjYyNDUsImV4cCI6MjA5MTM0MjI0NX0.Lu4h2TlPoDJOdheg1BarRHp9WWDSTNe0hNgZf6oJvfc";
