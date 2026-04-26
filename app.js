@@ -2332,7 +2332,6 @@ async function deduplicateLocalDB() {
     } catch (e) {
         console.warn('Deduplication pass failed:', e);
     }
-}
 async function pullFromCloud() {
     const isManual = arguments.length > 0 && arguments[0] === true;
     const loginSubtext = document.getElementById('login-sync-status-subtext');
@@ -2340,7 +2339,7 @@ async function pullFromCloud() {
     if(isManual) showToast('Syncing data...', 'info');
 
     if (typeof supabaseClient === 'undefined') {
-        if(loginSubtext) loginSubtext.innerText = "Offline mode active";
+        if(loginSubtext) loginSubtext.innerText = "Offline mode active (Lib missing)";
         updateSyncStatusIndicator();
         return;
     }
@@ -2348,16 +2347,25 @@ async function pullFromCloud() {
     if(loginSubtext) loginSubtext.innerText = "Connecting to central server...";
 
     try {
-        await pushPendingToCloud();
+        // Push pending changes first (if any)
+        await pushPendingToCloud().catch(e => console.warn("Push failed:", e));
         
-        if(loginSubtext) loginSubtext.innerText = "Fetching latest security records...";
+        if(loginSubtext) loginSubtext.innerText = "Fetching security records (5s timeout)...";
         
-        const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
+        // 5-second timeout for cloud requests
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('CLOUD_TIMEOUT')), 5000)
+        );
+
+        const fetchPromise = Promise.all([
             supabaseClient.from('settings').select('*'),
             supabaseClient.from('staff').select('*'),
             supabaseClient.from('daily_issues').select('*'),
             supabaseClient.from('daily_sales').select('*')
         ]);
+
+        const results = await Promise.race([fetchPromise, timeoutPromise]);
+        const [sRes, staffRes, issueRes, salesRes] = results;
 
         if (staffRes.error) throw staffRes.error;
 
@@ -2406,14 +2414,16 @@ async function pullFromCloud() {
 
     } catch (err) {
         console.warn("Pull failed:", err);
-        if(loginSubtext) loginSubtext.innerText = "Using local backup (Offline)";
+        if(loginSubtext) {
+            if(err.message === 'CLOUD_TIMEOUT') {
+                loginSubtext.innerHTML = '<span class="text-rose-400">Cloud Timeout.</span> Using local data.';
+            } else {
+                loginSubtext.innerText = "Offline Mode: Project may be paused.";
+            }
+        }
         updateSyncStatusIndicator();
     }
 }
-
-
-
-
 
 // --- History View Logic ---
 window.generateHistoryView = async function() {
