@@ -66,31 +66,49 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function updateSyncStatusIndicator() {
-    const indicator = document.getElementById('sync-indicator');
-    if (!indicator) return;
-
-    const dot = indicator.querySelector('.bg-emerald-500') || indicator.querySelector('.bg-rose-500') || indicator.querySelector('.bg-amber-500');
-    const ping = indicator.querySelector('.animate-ping');
+    const headerIndicator = document.getElementById('sync-indicator');
+    const dbIndicator = document.getElementById('db-sync-indicator');
+    const dbText = document.getElementById('db-sync-text');
+    
+    const indicators = [headerIndicator, dbIndicator].filter(el => el !== null);
+    if (indicators.length === 0) return;
 
     if (!navigator.onLine) {
-        if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-rose-500';
-        if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75';
-        indicator.title = "Offline Mode - Data will sync later";
+        indicators.forEach(ind => {
+            const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500');
+            const ping = ind.querySelector('.animate-ping');
+            if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 md:h-3 md:w-3 bg-rose-500';
+            if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75';
+        });
+        if(dbText) dbText.innerText = "Offline - Data Saved Locally";
+        if(headerIndicator) headerIndicator.title = "Offline Mode";
     } else {
         const pendingIssues = await db.dailyIssues.where('syncStatus').equals('pending').count();
         const pendingSales = await db.dailySales.where('syncStatus').equals('pending').count();
-        
-        if (pendingIssues > 0 || pendingSales > 0) {
-            if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-amber-500';
-            if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
-            indicator.title = `Syncing... (${pendingIssues + pendingSales} pending)`;
+        const totalPending = pendingIssues + pendingSales;
+
+        if (totalPending > 0) {
+            indicators.forEach(ind => {
+                const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500');
+                const ping = ind.querySelector('.animate-ping');
+                if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 md:h-3 md:w-3 bg-amber-500';
+                if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+            });
+            if(dbText) dbText.innerText = `Syncing... (${totalPending} pending)`;
+            if(headerIndicator) headerIndicator.title = `Syncing (${totalPending} pending)`;
         } else {
-            if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 bg-emerald-500';
-            if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
-            indicator.title = "Cloud Connected & Synchronized";
+            indicators.forEach(ind => {
+                const dot = ind.querySelector('.bg-emerald-500') || ind.querySelector('.bg-rose-500') || ind.querySelector('.bg-amber-500');
+                const ping = ind.querySelector('.animate-ping');
+                if(dot) dot.className = 'relative inline-flex rounded-full h-2 w-2 md:h-3 md:w-3 bg-emerald-500';
+                if(ping) ping.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+            });
+            if(dbText) dbText.innerText = "Cloud Synchronized";
+            if(headerIndicator) headerIndicator.title = "Cloud Connected";
         }
     }
 }
+
 
 
 async function pushPendingToCloud() {
@@ -177,6 +195,9 @@ async function showApp() {
             document.getElementById('collect-staff-wrap')?.classList.add('hidden');
             document.getElementById('btn-load-issue-wrap')?.classList.add('hidden');
             document.getElementById('issue-edit-btn-wrap')?.classList.add('hidden');
+            
+            // Show Dashboard to Distributor
+            document.getElementById('tab-overview').classList.remove('hidden');
 
             loadPreviousBalances(); 
             handleLoadExpectedData(true); // Auto-load without toasts

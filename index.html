@@ -386,12 +386,30 @@
 
                 <!-- OVERVIEW TAB -->
                 <div id="overview" class="tab-content fade-in p-4 md:p-6">
-                    <div class="flex justify-between items-end mb-8">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
                         <div>
                             <h2 class="text-2xl font-bold text-white">Dashboard Overview</h2>
                             <p class="text-sm text-gray-400 mt-1">Real-time distribution metrics</p>
                         </div>
-                        <div class="flex items-center space-x-3 no-print">
+                        
+                        <!-- NEW: Dashboard Sync Card -->
+                        <div id="dashboard-sync-card" class="w-full md:w-auto glass-panel p-3 border-indigo-500/30 bg-indigo-500/5 flex items-center justify-between gap-4 md:min-w-[300px]">
+                            <div class="flex items-center gap-3">
+                                <div id="db-sync-indicator" class="flex h-3 w-3 relative">
+                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black uppercase text-indigo-400 tracking-widest leading-none mb-1">Cloud Status</p>
+                                    <p id="db-sync-text" class="text-xs font-bold text-white leading-none">System Synchronized</p>
+                                </div>
+                            </div>
+                            <button onclick="pullFromCloud(true)" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase px-4 py-2 rounded-lg transition-all shadow-lg shadow-indigo-500/20">
+                                <i class="fas fa-sync-alt mr-1"></i> Sync Now
+                            </button>
+                        </div>
+
+                        <div class="hidden md:flex items-center space-x-3 no-print">
                             <button onclick="window.print()"
                                 class="bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 px-4 py-2 rounded-lg text-xs font-bold border border-indigo-500/30 transition-all">
                                 <i class="fas fa-print mr-2"></i> Print Analytics
@@ -402,6 +420,7 @@
                             </div>
                         </div>
                     </div>
+
 
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
                         <!-- Metric Cards -->
