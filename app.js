@@ -2634,3 +2634,38 @@ window.manualCloudSync = function() {
     pullFromCloud(true);
 }
 
+// --- Emergency Recovery: Force Update & Clear Cache ---
+window.forceAppUpdate = function() {
+    Swal.fire({
+        title: 'Repairing App...',
+        text: 'Clearing cache and updating to the latest version. Please wait...',
+        allowOutsideClick: false,
+        background: '#1e293b',
+        color: '#fff',
+        didOpen: () => {
+            Swal.showLoading();
+            
+            // 1. Unregister Service Workers
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    for (let registration of registrations) registration.unregister();
+                    
+                    // 2. Clear Caches
+                    caches.keys().then(names => {
+                        for (let name of names) caches.delete(name);
+                        
+                        // 3. Clear LocalStorage except user session (to prevent logout if unwanted, but here we want clean slate)
+                        // localStorage.clear(); 
+                        
+                        setTimeout(() => {
+                            location.reload(true);
+                        }, 1000);
+                    });
+                });
+            } else {
+                location.reload(true);
+            }
+        }
+    });
+}
+
