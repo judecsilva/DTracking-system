@@ -1241,27 +1241,48 @@ function setupEventListeners() {
         const user = document.getElementById('login-username').value.trim();
         const pass = document.getElementById('login-password').value.trim();
 
-        // Admin check
-        let settings = await db.settings.toCollection().first();
-        const adminPass = (settings && settings.adminPassword) ? settings.adminPassword : 'admin123';
-        
-        if(user === 'admin' && pass === adminPass) {
-            currentUser = { id: 0, name: 'Administrator', role: 'admin' };
-            localStorage.setItem('crdms_user', JSON.stringify(currentUser));
-            showApp();
-            return;
-        }
+        try {
+            // Ensure DB is open
+            if (!db.isOpen()) await db.open().catch(err => console.error("DB Open failed:", err));
 
-        // Staff check
-        let staff = await db.staff.where('phone').equals(user).first();
-        if(staff && staff.password === pass) {
-            currentUser = { id: staff.id, name: staff.name, role: 'distributor' };
-            localStorage.setItem('crdms_user', JSON.stringify(currentUser));
-            showApp();
-        } else {
-            Swal.fire({ icon: 'error', title: 'Login Failed', text: 'Invalid phone or password', background: '#1e293b', color: '#fff'});
+            // Admin check
+            let settings = await db.settings.toCollection().first();
+            const adminPass = (settings && settings.adminPassword) ? settings.adminPassword : 'admin123';
+            
+            if(user === 'admin' && pass === adminPass) {
+                currentUser = { id: 0, name: 'Administrator', role: 'admin' };
+                localStorage.setItem('crdms_user', JSON.stringify(currentUser));
+                showApp();
+                return;
+            }
+
+            // Staff check
+            let staff = await db.staff.where('phone').equals(user).first();
+            if(staff && staff.password === pass) {
+                currentUser = { id: staff.id, name: staff.name, role: 'distributor' };
+                localStorage.setItem('crdms_user', JSON.stringify(currentUser));
+                showApp();
+            } else {
+                Swal.fire({ 
+                    icon: 'error', 
+                    title: 'Login Failed', 
+                    text: (staff) ? 'Incorrect password' : 'User not found. Please wait for "System Ready" or check connection.', 
+                    background: '#1e293b', 
+                    color: '#fff'
+                });
+            }
+        } catch (err) {
+            console.error("Login Error:", err);
+            Swal.fire({ 
+                icon: 'error', 
+                title: 'System Error', 
+                text: 'Database or connection error. Please refresh the page.', 
+                background: '#1e293b', 
+                color: '#fff'
+            });
         }
     });
+
 
     // Sets & Target
     document.getElementById('staff-form').addEventListener('submit', async (e) => {
@@ -1815,19 +1836,21 @@ window.resetSystem = async function() {
                 await db.delete();
                 console.log("Local Database destroyed.");
                 
-                // 3. Re-create and open to avoid "Database is closed" errors before reload
-                const newDb = new Dexie("DistributionDB");
-                newDb.version(4).stores({
-                    settings: '++id, targetAmount, adminPassword',
-                    staff: '++id, name, routeName, phone, password, syncStatus',
-                    dailyIssues: '++id, staffId, date, syncStatus, [date+staffId]',
-                    dailySales: '++id, staffId, date, syncStatus, [date+staffId]'
+                // 3. Force a reload to re-initialize everything cleanly
+                Swal.fire({
+                    title: 'System Wiped',
+                    text: 'The system has been completely reset. Reloading now...',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    background: '#1e293b',
+                    color: '#fff'
                 });
-                await newDb.open();
                 
-                if (typeof currentIssuedData !== 'undefined') {
-                    currentIssuedData = null;
-                }
+                setTimeout(() => {
+                    location.reload();
+                }, 2000);
+
                 
                 // 4. Clear ALL local storage
                 localStorage.clear();
