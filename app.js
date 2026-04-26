@@ -2219,10 +2219,14 @@ async function deduplicateLocalDB() {
 }
 
 async function pullFromCloud() {
-    if (typeof supabaseClient === 'undefined') return;
-
+    // --- Detect manual trigger FIRST (before any early returns) ---
     const isManual = arguments.length > 0 && arguments[0] === true;
     if(isManual) showToast('Syncing data...', 'info');
+
+    if (typeof supabaseClient === 'undefined') {
+        if(isManual) showToast('No cloud connection available (offline mode)', 'error');
+        return;
+    }
 
     try {
         await pushPendingToCloud();
@@ -2232,6 +2236,7 @@ async function pullFromCloud() {
     
     const statusEl = document.getElementById('login-sync-status');
     if(statusEl) statusEl.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Syncing security data...';
+
 
     try {
         const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
