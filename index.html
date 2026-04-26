@@ -1661,7 +1661,35 @@
         </script>
         <script src="app.js?v=3.1"></script>
         <script>
-            // Service Worker Registration for Offline Support
+            // EMERGENCY RECOVERY SCRIPT (Works even if app.js fails)
+            async function forceAppUpdate() {
+                if(!confirm("Repair App? This will clear the cache and reload the system to fix errors.")) return;
+                
+                console.log("Force update triggered from index.html...");
+                try {
+                    // 1. Clear Service Workers
+                    if ('serviceWorker' in navigator) {
+                        const regs = await navigator.serviceWorker.getRegistrations();
+                        for (let r of regs) await r.unregister();
+                    }
+                    // 2. Clear Caches
+                    if (typeof caches !== 'undefined') {
+                        const names = await caches.keys();
+                        for (let n of names) await caches.delete(n);
+                    }
+                    // 3. Clear Storage
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    
+                    alert("App Repaired! Reloading now...");
+                    location.reload(true);
+                } catch (e) {
+                    console.error(e);
+                    location.reload(true);
+                }
+            }
+
+            // Service Worker Registration
             if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
                     navigator.serviceWorker.register('./sw.js')

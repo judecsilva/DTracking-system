@@ -997,7 +997,7 @@ async function handleLoadExpectedData(isAuto = false) {
         document.getElementById('avail-c48').value = parseFloat(issued.card48 || 0);
         document.getElementById('avail-c95').value = parseFloat(issued.card95 || 0);
         document.getElementById('avail-c96').value = parseFloat(issued.card96 || 0);
-        document.getElementById('avail-reload-disp').innerText = `Stock: Rs. ${totalReload.toLocaleString()}`;
+        document.getElementById('avail-reload-disp').innerText = 'Stock: Rs. ' + totalReload.toLocaleString();
         document.getElementById('avail-reload-val').value = totalReload;
 
         // Reset fields
