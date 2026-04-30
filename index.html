@@ -1434,38 +1434,32 @@
                     <div id="history-result-area"
                         class="hidden glass-panel overflow-hidden border-indigo-500/10 shadow-xl bg-slate-800/20">
                         
-                        <!-- Premium Print Header (Visible only in Print) -->
-                        <div class="print-only mb-8 border-b-4 border-indigo-900 pb-6">
+                        <!-- Premium Print Header (Visible in Print, Grey on Screen) -->
+                        <div class="mb-8 border-b-4 border-slate-700/30 pb-6 p-6 print:border-indigo-900 print:mb-8 print:pb-6 print:p-0">
                             <div class="flex justify-between items-end">
                                 <div>
-                                    <h1 class="text-4xl font-black text-indigo-900 uppercase tracking-tighter leading-none">CRDMS</h1>
-                                    <p class="text-[10px] font-black tracking-[0.2em] text-indigo-600 uppercase mt-1">Management Analytics System</p>
-                                    <div class="mt-4 border-l-4 border-indigo-500 pl-4">
-                                        <h3 class="text-lg font-bold text-slate-800 uppercase" id="history-title-name-print">Distributor Name</h3>
-                                        <p class="text-xs font-bold text-slate-500" id="history-title-month-print">Month</p>
+                                    <h1 class="text-4xl font-black uppercase tracking-tighter leading-none text-slate-400 print:text-indigo-900">CRDMS</h1>
+                                    <p class="text-[10px] font-black tracking-[0.2em] uppercase mt-1 text-slate-600 print:text-indigo-600">Management Analytics System</p>
+                                    <div class="mt-4 border-l-4 border-slate-700/50 pl-4 print:border-indigo-500">
+                                        <h3 class="text-lg font-bold uppercase text-indigo-400 print:text-slate-800" id="history-title-name-print">Distributor Name</h3>
+                                        <p class="text-xs font-bold text-slate-500" id="history-title-month-print">Month Summary</p>
                                     </div>
                                 </div>
                                 <div class="text-right flex flex-col items-end">
-                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Authenticated Activity Log</p>
-                                    <p class="text-xs font-bold text-black">Generated: <span id="history-print-gen-date" class="font-mono text-black"></span></p>
+                                    <p class="text-[10px] font-black uppercase tracking-widest mb-1 text-slate-500 print:text-slate-400">Authenticated Activity Log</p>
+                                    <p class="text-xs font-bold text-slate-400 print:text-black">Generated: <span id="history-print-gen-date" class="font-mono text-slate-300 print:text-black"></span></p>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="p-5 border-b border-slate-700/50 flex justify-between items-center bg-[#1e293b]/50 no-print">
-                            <div class="flex flex-col">
+                        <!-- Screen Action Bar (Buttons) -->
+                        <div class="p-5 border-t border-slate-700/30 flex justify-between items-center bg-[#1e293b]/50 no-print">
+                            <div>
                                 <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name</h3>
-                                <div class="flex items-center space-x-3 mt-1">
-                                    <p class="text-xs text-gray-400" id="history-title-month">Month</p>
-                                    <span class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">•</span>
-                                    <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                                        <span class="hidden md:inline">Authenticated Activity Log • </span>
-                                        Generated: <span id="history-screen-gen-date" class="text-gray-200 ml-1 font-mono"></span>
-                                    </p>
-                                </div>
+                                <p class="text-xs text-gray-400" id="history-title-month">Month</p>
                             </div>
                             <button onclick="printHistoryReport()" class="btn-secondary py-1.5 px-4 text-xs">
-                                <i class="fas fa-print mr-1"></i> Print / PDF
+                                <i class="fas fa-print mr-1"></i> Print / PDF Report
                             </button>
                         </div>
                         <div class="overflow-x-auto">
@@ -1631,13 +1625,10 @@
                         margin: 0 !important;
                     }
 
-                    #report-title-meta, .history-print-meta {
-                        font-size: 9pt !important;
-                        color: #444 !important;
-                    }
-                    
-                    .print-only { display: none; }
-                    body.print-history .print-only { display: block !important; }
+                }
+                
+                .print-only { display: none !important; }
+                body.print-history .print-only { display: block !important; }
 
                     /* Grid adjustment for print */
                     .grid {
