@@ -260,11 +260,9 @@ async function showApp() {
             issueStaff.disabled = true;
             collectStaff.disabled = true;
 
-            // Hide redundant elements for Distributor
+            // Hide redundant elements for Distributor (staff dropdowns only, keep the load/edit buttons)
             document.getElementById('issue-staff-wrap')?.classList.add('hidden');
             document.getElementById('collect-staff-wrap')?.classList.add('hidden');
-            document.getElementById('btn-load-issue-wrap')?.classList.add('hidden');
-            document.getElementById('issue-edit-btn-wrap')?.classList.add('hidden');
 
             // Show Dashboard to Distributor
             document.getElementById('tab-overview').classList.remove('hidden');
