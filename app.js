@@ -2432,8 +2432,9 @@ async function pullFromCloud() {
             // Helper to delete local records that were removed from the cloud
             const removeDeleted = async (table, cloudIdsArr) => {
                 const cloudIds = new Set(cloudIdsArr);
-                const syncedLocal = await db[table].where('syncStatus').equals('synced').toArray();
-                const toDelete = syncedLocal.filter(r => !cloudIds.has(r.id)).map(r => r.id);
+                const allLocal = await db[table].toArray();
+                // If it's NOT explicitly 'pending', and it's missing from the cloud, it must be deleted.
+                const toDelete = allLocal.filter(r => r.syncStatus !== 'pending' && !cloudIds.has(r.id)).map(r => r.id);
                 if (toDelete.length > 0) await db[table].bulkDelete(toDelete);
             };
 
