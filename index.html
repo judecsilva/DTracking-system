@@ -401,15 +401,19 @@
                             <p class="text-sm text-gray-400 mt-1">Real-time distribution metrics</p>
                         </div>
                         
-                        <!-- Admin Analytics Label -->
-                        <div class="hidden md:flex items-center space-x-3 no-print">
+                        <!-- Dashboard Month Selector -->
+                        <div class="flex items-center space-x-3 no-print">
                             <button onclick="window.print()"
                                 class="bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 px-4 py-2 rounded-lg text-xs font-bold border border-indigo-500/30 transition-all">
                                 <i class="fas fa-print mr-2"></i> Print Analytics
                             </button>
-                            <div class="bg-slate-800 px-4 py-2 rounded-lg border border-slate-700 text-sm font-medium">
-                                <i class="far fa-calendar-alt mr-2 text-indigo-400"></i><span
-                                    id="overview-month">...</span>
+                            <div class="flex items-center bg-slate-800 rounded-lg border border-slate-700 overflow-hidden shadow-lg">
+                                <div class="px-3 py-2 border-r border-slate-700 bg-slate-800/50">
+                                    <i class="far fa-calendar-alt text-indigo-400"></i>
+                                </div>
+                                <input type="month" id="dashboard-month-selector" 
+                                       class="bg-transparent text-white text-xs font-bold py-2 px-3 focus:outline-none cursor-pointer hover:bg-slate-700/50 transition-colors"
+                                       onchange="refreshDashboardWithMonth()">
                             </div>
                         </div>
                     </div>
@@ -1498,7 +1502,7 @@
                     <div class="flex items-center justify-center space-x-2">
                         <span class="h-px w-8 bg-slate-800"></span>
                         <p class="text-xs font-bold text-slate-400">Powered by <span
-                                class="text-indigo-400">JudeCSilva</span> • <span class="text-[9px] opacity-50">v22.0</span></p>
+                                class="text-indigo-400">JudeCSilva</span> • <span class="text-[9px] opacity-50">v23.0</span></p>
                         <span class="h-px w-8 bg-slate-800"></span>
                     </div>
                 </footer>

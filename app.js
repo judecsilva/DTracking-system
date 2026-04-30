@@ -46,7 +46,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('collect-date').value = getTodayString();
     const repMonth = document.getElementById('report-month');
     if (repMonth) repMonth.value = getCurrentMonthString();
-    updateMonthDisplay();
+    
+    // Initialize Dashboard Month Selector
+    const dashMonth = document.getElementById('dashboard-month-selector');
+    if (dashMonth) dashMonth.value = getCurrentMonthString();
 
     // Event Listeners
     setupEventListeners();
@@ -388,10 +391,13 @@ function switchTab(tabId) {
     }
 }
 
+async function refreshDashboardWithMonth() {
+    await updateDashboardCard();
+    showToast('Dashboard updated for ' + document.getElementById('dashboard-month-selector').value, 'info');
+}
+
 function updateMonthDisplay() {
-    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    const d = new Date();
-    document.getElementById('overview-month').innerText = `${months[d.getMonth()]} ${d.getFullYear()}`;
+    // Obsolete — handled by dashboard-month-selector input
 }
 
 async function showToast(title, icon = 'success') {
@@ -415,7 +421,11 @@ async function updateDashboardCard() {
     let monthSales = [];
     let todayIssuesList = [];
     let todaySalesList = [];
-    let currentMonth = getCurrentMonthString();
+    
+    // Read from selector or default to current
+    const dashMonthSelector = document.getElementById('dashboard-month-selector');
+    let currentMonth = (dashMonthSelector && dashMonthSelector.value) ? dashMonthSelector.value : getCurrentMonthString();
+    
     let todayStr = getTodayString();
 
     if (currentUser && currentUser.role === 'distributor') {
