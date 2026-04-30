@@ -2602,8 +2602,8 @@ window.generateHistoryView = async function () {
     let grandTotalShortage = 0;
 
     sortedDates.forEach(date => {
-        const issue = monthlyIssues.find(i => i.date === date && (Number(i.staffId) === Number(staffId)));
-        const sale = monthlySales.find(s => s.date === date && (Number(s.staffId) === Number(staffId)));
+        const issue = monthlyIssues.find(i => i.date === date && (String(i.staffId) === String(staffId)));
+        const sale = monthlySales.find(s => s.date === date && (String(s.staffId) === String(staffId)));
 
         // Issue Metrics
         let cardFV = 0;
@@ -2662,7 +2662,10 @@ window.generateHistoryView = async function () {
                     <td class="py-3 px-3 text-right text-orange-400">${formatCurrency(shopComm)}</td>
                     <td class="py-3 px-3 text-right text-blue-400 font-bold">${formatCurrency(handAmt)}</td>
                     <td class="py-3 px-3 text-right ${shortClass} font-bold">${formatCurrency(Math.abs(shortAmt))} ${shortAmt > 0 ? '(S)' : shortAmt < 0 ? '(E)' : ''}</td>
-                    <td class="py-3 px-3 text-center">
+                    <td class="py-3 px-3 text-center flex justify-center gap-1">
+                        <button onclick="editHistoryRecord('${date}', '${staffId}', true)" class="text-blue-400 hover:text-blue-300 p-1.5 rounded-lg hover:bg-blue-400/10 transition-colors" title="Edit Collection">
+                            <i class="fas fa-edit"></i>
+                        </button>
                         <button onclick="deleteHistoryRecord('${date}', '${staffId}')" class="text-red-400 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-400/10 transition-colors" title="Delete Record">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -2679,7 +2682,10 @@ window.generateHistoryView = async function () {
                     <td class="py-3 px-3">${formatCurrency(cardFV)}</td>
                     <td class="py-3 px-3 text-right">${formatCurrency(reloadIssued)}</td>
                     <td colspan="4" class="py-3 px-3 text-center text-gray-500 italic">Day not settled yet</td>
-                    <td class="py-3 px-3 text-center">
+                    <td class="py-3 px-3 text-center flex justify-center gap-1">
+                        <button onclick="editHistoryRecord('${date}', '${staffId}', false)" class="text-blue-400 hover:text-blue-300 p-1.5 rounded-lg hover:bg-blue-400/10 transition-colors" title="Edit Issue">
+                            <i class="fas fa-edit"></i>
+                        </button>
                         <button onclick="deleteHistoryRecord('${date}', '${staffId}')" class="text-red-400 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-400/10 transition-colors" title="Delete Record">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -2707,6 +2713,30 @@ window.generateHistoryView = async function () {
     `;
 
     resultArea.classList.remove('hidden');
+}
+
+window.editHistoryRecord = async function(date, staffId, isSale) {
+    if (isSale) {
+        switchTab('collection');
+        document.getElementById('collect-date').value = date;
+        const staffDrop = document.getElementById('collect-staff');
+        if (staffDrop) staffDrop.value = staffId;
+        if (typeof clearCollectionForm === 'function') clearCollectionForm();
+        if (typeof updateStaffPerformanceDisplay === 'function') updateStaffPerformanceDisplay(staffId);
+        await handleLoadExpectedData(true);
+        showToast('Loaded ' + date + ' collection for editing', 'info');
+    } else {
+        switchTab('issue');
+        document.getElementById('issue-date').value = date;
+        const staffDrop = document.getElementById('issue-staff');
+        if (staffDrop) staffDrop.value = staffId;
+        if (typeof loadPreviousBalances === 'function') await loadPreviousBalances();
+        if (typeof updateStaffPerformanceDisplay === 'function') updateStaffPerformanceDisplay(staffId);
+        // We can't easily auto-click the "Load Edit" button for issue without triggering the popup,
+        // but loadPreviousBalances does most of the work. If they want to load previous manual edits,
+        // they can click the "Load Edit" button manually on the Issue page.
+        showToast('Loaded ' + date + ' issue for editing', 'info');
+    }
 }
 
 window.deleteHistoryRecord = async function (date, staffId) {
