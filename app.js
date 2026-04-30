@@ -70,6 +70,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             // Auto-refresh the UI if a user is currently logged in
             if (currentUser) {
+                // Ensure dropdowns are synced with any potential ID or name changes
+                if (typeof loadStaffDropdowns === 'function') {
+                    await loadStaffDropdowns();
+                }
+
                 // Update Dashboard statistics
                 if (typeof updateDashboardCard === 'function') {
                     await updateDashboardCard();
@@ -2461,6 +2466,13 @@ async function pullFromCloud() {
                         
                         // Delete the old local record
                         await db.staff.delete(ex.id);
+                        
+                        // CRITICAL FIX: If the logged-in user's ID was deduplicated, update their active session
+                        if (typeof currentUser !== 'undefined' && currentUser && currentUser.id === ex.id) {
+                            currentUser.id = r.id;
+                            localStorage.setItem('crdms_user', JSON.stringify(currentUser));
+                            console.log(`Updated active session to new ID: ${r.id}`);
+                        }
                     }
                 }
                 await db.staff.bulkPut(mappedStaff);
