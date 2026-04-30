@@ -212,7 +212,7 @@ async function pushPendingToCloud() {
             sold_card48: r.soldCard48, sold_card95: r.soldCard95, sold_card96: r.soldCard96,
             sold_reload_cash: r.soldReloadCash, hand_cash: r.handCash,
             total_commission: r.totalCommission, shortage_amt: r.shortageAmt,
-            returned_card48: r.returnedCard48, returned_card95: r.returnedCard95, returned_card96: r.returned_card96,
+            returned_card48: r.returnedCard48, returned_card95: r.returnedCard95, returned_card96: r.returnedCard96,
             avail_reload: r.availReload
         }, { staff_id: r.staffId, date: r.date });
         if (success) await db.dailySales.update(r.id, { syncStatus: 'synced' });
@@ -1611,8 +1611,8 @@ async function loadPreviousBalances() {
             // It's a settlement record: use what was brought back
             document.getElementById('issue-prev-c48').value = sourceRecord.returnedCard48 || 0;
             document.getElementById('issue-prev-c95').value = sourceRecord.returnedCard95 || 0;
-            document.getElementById('issue-prev-c96').value = sourceRecord.returnedCard96 || 0;
-            const avail = Number(sourceRecord.availReload || 0);
+            document.getElementById('issue-prev-c96').value = sourceRecord.returnedCard96 || sourceRecord.returned_card96 || 0;
+            const avail = Number(sourceRecord.availReload !== undefined ? sourceRecord.availReload : (sourceRecord.avail_reload || 0));
             const sold = Number(sourceRecord.soldReloadCash || 0);
             document.getElementById('issue-prev-reload').value = (avail - sold) || 0;
         } else {
@@ -2517,7 +2517,7 @@ async function pullFromCloud() {
                     soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash),
                     totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
                     returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
-                    avail_reload: r.avail_reload, syncStatus: 'synced'
+                    availReload: r.avail_reload, syncStatus: 'synced'
                 }));
                 
                 await removeDeleted('dailySales', mapped.map(r => r.id));
