@@ -1454,9 +1454,15 @@
 
                         <!-- Screen Header (Hidden in Print) -->
                         <div class="p-5 border-b border-slate-700/50 flex justify-between items-center bg-[#1e293b]/50 no-print">
-                            <div>
+                            <div class="flex flex-col">
                                 <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name</h3>
-                                <p class="text-xs text-gray-400" id="history-title-month">Month</p>
+                                <div class="flex items-center space-x-3 mt-1">
+                                    <p class="text-xs text-gray-400" id="history-title-month">Month</p>
+                                    <span class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">•</span>
+                                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                                        Generated: <span id="history-screen-gen-date" class="text-gray-300 ml-1"></span>
+                                    </p>
+                                </div>
                             </div>
                             <button onclick="printHistoryReport()" class="btn-secondary py-1.5 px-4 text-xs">
                                 <i class="fas fa-print mr-1"></i> Print / PDF

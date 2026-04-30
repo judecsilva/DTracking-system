@@ -2569,9 +2569,12 @@ window.generateHistoryView = async function () {
     if (namePrint) namePrint.innerText = staff.name + ' (' + staff.routeName + ')';
     if (monthPrint) monthPrint.innerText = 'Month Summary: ' + month;
     
-    // Populate generation date immediately
+    // Populate generation date immediately for both screen and print
+    const now = new Date().toLocaleString();
     const genDateEl = document.getElementById('history-print-gen-date');
-    if (genDateEl) genDateEl.innerText = new Date().toLocaleString();
+    const screenGenDateEl = document.getElementById('history-screen-gen-date');
+    if (genDateEl) genDateEl.innerText = now;
+    if (screenGenDateEl) screenGenDateEl.innerText = now;
 
     // Fetch records for month — try both numeric and string IDs for compatibility
     let issues = await db.dailyIssues.where('staffId').equals(staffId).toArray();
