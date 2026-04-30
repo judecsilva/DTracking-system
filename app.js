@@ -62,10 +62,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Supabase Realtime Listeners for Multi-Device Sync ---
     if (typeof supabaseClient !== 'undefined') {
-        const handleCloudChange = (payload) => {
+        const handleCloudChange = async (payload) => {
             console.log("Cloud change detected:", payload.eventType, payload.table);
-            // If something was deleted or the whole table was cleared, we pull to stay in sync
-            pullFromCloud();
+            
+            // Wait for the new data to be pulled and saved locally
+            await pullFromCloud();
+            
+            // Auto-refresh the UI if a user is currently logged in
+            if (currentUser) {
+                // Update Dashboard statistics
+                if (typeof updateDashboardCard === 'function') {
+                    await updateDashboardCard();
+                }
+                
+                // Update Role-Specific UIs
+                if (currentUser.role === 'admin') {
+                    if (typeof renderStaffTable === 'function') await renderStaffTable();
+                    if (typeof renderDistributorStats === 'function') await renderDistributorStats();
+                } else if (currentUser.role === 'distributor') {
+                    if (typeof loadPreviousBalances === 'function') await loadPreviousBalances();
+                    if (typeof handleLoadExpectedData === 'function') await handleLoadExpectedData(true);
+                    if (typeof updateStaffPerformanceDisplay === 'function') await updateStaffPerformanceDisplay(currentUser.id);
+                }
+            }
         };
 
         // Listen for ANY changes in key tables to keep all devices synchronized
