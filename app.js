@@ -416,6 +416,16 @@ async function showToast(title, icon = 'success') {
     Toast.fire({ icon, title });
 }
 
+window.printDashboard = function() {
+    document.body.classList.add('print-dashboard');
+    window.print();
+    // Use a small delay to remove the class after the print dialog closes
+    setTimeout(() => {
+        document.body.classList.remove('print-dashboard');
+    }, 1000);
+}
+
+// --- Sync & Cloud Logic ---
 // --- Dashboard Logic ---
 async function updateDashboardCard() {
     let targetSetting = await db.settings.toCollection().first();

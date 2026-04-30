@@ -403,7 +403,7 @@
                         
                         <!-- Dashboard Month Selector -->
                         <div class="flex items-center space-x-3 no-print">
-                            <button onclick="window.print()"
+                            <button onclick="printDashboard()"
                                 class="bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 px-4 py-2 rounded-lg text-xs font-bold border border-indigo-500/30 transition-all">
                                 <i class="fas fa-print mr-2"></i> Print Analytics
                             </button>
@@ -1502,7 +1502,7 @@
                     <div class="flex items-center justify-center space-x-2">
                         <span class="h-px w-8 bg-slate-800"></span>
                         <p class="text-xs font-bold text-slate-400">Powered by <span
-                                class="text-indigo-400">JudeCSilva</span> • <span class="text-[9px] opacity-50">v24.0</span></p>
+                                class="text-indigo-400">JudeCSilva</span> • <span class="text-[9px] opacity-50">v25.0</span></p>
                         <span class="h-px w-8 bg-slate-800"></span>
                     </div>
                 </footer>
@@ -1531,9 +1531,14 @@
                     footer,
                     .no-print,
                     .swal2-container,
-                    body:not(.print-history) #app-container>*:not(.flex-1),
-                    body:not(.print-history) #app-container .flex-1>*:not(#reports),
-                    body:not(.print-history) #reports>*:not(#report-printable-area),
+                    /* Hide everything except current print target */
+                    body:not(.print-history):not(.print-dashboard) #app-container>*:not(.flex-1),
+                    body:not(.print-history):not(.print-dashboard) #app-container .flex-1>*:not(#reports),
+                    body:not(.print-history):not(.print-dashboard) #reports>*:not(#report-printable-area),
+                    
+                    body.print-dashboard #app-container>*:not(.flex-1),
+                    body.print-dashboard #app-container .flex-1>*:not(#overview),
+                    
                     body.print-history #app-container>*:not(.flex-1),
                     body.print-history #app-container .flex-1>*:not(#history),
                     body.print-history #history>*:not(#history-result-area),
@@ -1546,8 +1551,9 @@
                     #app-content,
                     #app-container,
                     .flex-1,
-                    body:not(.print-history) #reports,
-                    body:not(.print-history) #report-printable-area,
+                    body:not(.print-history):not(.print-dashboard) #reports,
+                    body:not(.print-history):not(.print-dashboard) #report-printable-area,
+                    body.print-dashboard #overview,
                     body.print-history #history,
                     body.print-history #history-result-area {
                         display: block !important;
