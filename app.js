@@ -2426,10 +2426,31 @@ async function pullFromCloud() {
                 adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
             })));
 
-            if (staffRes.data) await db.staff.bulkPut(staffRes.data.map(s => ({
-                id: s.id, name: s.name, routeName: s.route_name, phone: s.phone,
-                password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id
-            })));
+            if (staffRes.data) {
+                const mappedStaff = staffRes.data.map(s => ({
+                    id: s.id, name: s.name, routeName: s.route_name, phone: s.phone,
+                    password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id, syncStatus: 'synced'
+                }));
+                
+                // Deduplicate logic: Fix ID mismatches between Cloud and Local
+                for (const r of mappedStaff) {
+                    // Match by phone number since it's unique per distributor
+                    const ex = await db.staff.where('phone').equals(r.phone).first();
+                    if (ex && ex.id !== r.id) {
+                        console.log(`Fixing Staff ID mismatch for ${r.phone}: Local(${ex.id}) -> Cloud(${r.id})`);
+                        // Update related foreign keys in other tables
+                        await db.dailyIssues.where('staffId').equals(ex.id).modify({ staffId: r.id });
+                        await db.dailySales.where('staffId').equals(ex.id).modify({ staffId: r.id });
+                        // Also try string matching just in case
+                        await db.dailyIssues.where('staffId').equals(String(ex.id)).modify({ staffId: r.id });
+                        await db.dailySales.where('staffId').equals(String(ex.id)).modify({ staffId: r.id });
+                        
+                        // Delete the old local record
+                        await db.staff.delete(ex.id);
+                    }
+                }
+                await db.staff.bulkPut(mappedStaff);
+            }
 
             if (issueRes.data) {
                 const mapped = issueRes.data.map(r => ({
