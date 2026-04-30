@@ -1447,12 +1447,11 @@
                                 </div>
                                 <div class="text-right flex flex-col items-end">
                                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Authenticated Activity Log</p>
-                                    <p class="text-xs font-bold text-slate-900">Generated: <span id="history-print-gen-date" class="font-mono"></span></p>
+                                    <p class="text-xs font-bold text-black">Generated: <span id="history-print-gen-date" class="font-mono text-black"></span></p>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Screen Header (Hidden in Print) -->
                         <div class="p-5 border-b border-slate-700/50 flex justify-between items-center bg-[#1e293b]/50 no-print">
                             <div class="flex flex-col">
                                 <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name</h3>
@@ -1460,7 +1459,8 @@
                                     <p class="text-xs text-gray-400" id="history-title-month">Month</p>
                                     <span class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">•</span>
                                     <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                                        Generated: <span id="history-screen-gen-date" class="text-gray-300 ml-1"></span>
+                                        <span class="hidden md:inline">Authenticated Activity Log • </span>
+                                        Generated: <span id="history-screen-gen-date" class="text-gray-300 ml-1 font-mono"></span>
                                     </p>
                                 </div>
                             </div>
@@ -1570,7 +1570,7 @@
                     /* Force all text inside the report to be black EXCEPT the branded headers */
                     body:not(.print-history) #report-printable-area *:not(h1):not(.text-indigo-600),
                     body.print-history #history-result-area *:not(h1):not(.text-indigo-600) {
-                        color: black !important;
+                        color: #000000 !important;
                     }
                     
                     body:not(.print-history) #report-printable-area h1,

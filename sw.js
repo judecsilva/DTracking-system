@@ -1,4 +1,4 @@
-const CACHE_NAME = 'crdms-cache-v19';
+const CACHE_NAME = 'crdms-cache-v20';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
