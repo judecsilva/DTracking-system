@@ -2562,6 +2562,16 @@ window.generateHistoryView = async function () {
 
     document.getElementById('history-title-name').innerText = staff.name + ' (' + staff.routeName + ')';
     document.getElementById('history-title-month').innerText = 'System Records for: ' + month;
+    
+    // Also populate print-only headers
+    const namePrint = document.getElementById('history-title-name-print');
+    const monthPrint = document.getElementById('history-title-month-print');
+    if (namePrint) namePrint.innerText = staff.name + ' (' + staff.routeName + ')';
+    if (monthPrint) monthPrint.innerText = 'Month Summary: ' + month;
+    
+    // Populate generation date immediately
+    const genDateEl = document.getElementById('history-print-gen-date');
+    if (genDateEl) genDateEl.innerText = new Date().toLocaleString();
 
     // Fetch records for month — try both numeric and string IDs for compatibility
     let issues = await db.dailyIssues.where('staffId').equals(staffId).toArray();

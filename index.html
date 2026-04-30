@@ -1434,26 +1434,31 @@
                     <div id="history-result-area"
                         class="hidden glass-panel overflow-hidden border-indigo-500/10 shadow-xl bg-slate-800/20">
                         
-                        <!-- Print-Only Header -->
-                        <div class="print-only mb-6 border-b-4 border-indigo-900 pb-4">
-                            <div class="flex justify-between items-start">
+                        <!-- Premium Print Header (Visible only in Print) -->
+                        <div class="print-only mb-8 border-b-4 border-indigo-900 pb-6">
+                            <div class="flex justify-between items-end">
                                 <div>
-                                    <h1 class="text-3xl font-black uppercase tracking-tighter text-indigo-900 leading-none">CRDMS Network</h1>
-                                    <p class="text-[10px] font-black tracking-[0.2em] text-indigo-600 uppercase mt-1">Distributor Activity Ledger</p>
+                                    <h1 class="text-4xl font-black text-indigo-900 uppercase tracking-tighter leading-none">CRDMS</h1>
+                                    <p class="text-[10px] font-black tracking-[0.2em] text-indigo-600 uppercase mt-1">Management Analytics System</p>
+                                    <div class="mt-4 border-l-4 border-indigo-500 pl-4">
+                                        <h3 class="text-lg font-bold text-slate-800 uppercase" id="history-title-name-print">Distributor Name</h3>
+                                        <p class="text-xs font-bold text-slate-500" id="history-title-month-print">Month</p>
+                                    </div>
                                 </div>
-                                <div class="text-right">
-                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Generated On</p>
-                                    <p class="text-xs font-mono font-bold text-slate-900 mt-1" id="history-print-gen-date"></p>
+                                <div class="text-right flex flex-col items-end">
+                                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Authenticated Activity Log</p>
+                                    <p class="text-xs font-bold text-slate-900">Generated: <span id="history-print-gen-date" class="font-mono"></span></p>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="p-5 border-b border-slate-700/50 flex justify-between items-center bg-[#1e293b]/50">
+                        <!-- Screen Header (Hidden in Print) -->
+                        <div class="p-5 border-b border-slate-700/50 flex justify-between items-center bg-[#1e293b]/50 no-print">
                             <div>
                                 <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name</h3>
                                 <p class="text-xs text-gray-400" id="history-title-month">Month</p>
                             </div>
-                            <button onclick="printHistoryReport()" class="btn-secondary py-1.5 px-4 text-xs no-print">
+                            <button onclick="printHistoryReport()" class="btn-secondary py-1.5 px-4 text-xs">
                                 <i class="fas fa-print mr-1"></i> Print / PDF
                             </button>
                         </div>
@@ -1572,36 +1577,37 @@
                         color: #4f46e5 !important; /* indigo-600 */
                     }
 
-                    /* Compact Table for Print */
+                    /* Premium Table for Print (No boxing, clean borders) */
                     table {
                         width: 100% !important;
-                        table-layout: fixed !important;
                         border-collapse: collapse !important;
-                        margin-bottom: 15px !important;
-                        font-size: 8.5pt !important;
-                        border: 1px solid #1e293b !important;
+                        margin-bottom: 20px !important;
+                        font-size: 9pt !important;
+                        border: none !important;
+                    }
+                    
+                    thead tr {
+                        background-color: #1e1b4b !important; /* indigo-950 */
                     }
 
                     th {
-                        background-color: #f1f5f9 !important;
-                        /* Lighter background for better printing */
-                        color: black !important;
-                        padding: 6px 4px !important;
-                        border: 1px solid #1e293b !important;
+                        color: white !important;
+                        padding: 10px 6px !important;
+                        border: none !important;
                         font-weight: 700 !important;
                         text-transform: uppercase !important;
-                        font-size: 8pt !important;
+                        font-size: 7.5pt !important;
+                        text-align: left !important;
                     }
 
                     td {
-                        padding: 5px 4px !important;
-                        border: 1px solid #1e293b !important;
+                        padding: 8px 6px !important;
+                        border-bottom: 1px solid #e2e8f0 !important;
                         color: black !important;
-                        word-wrap: break-word !important;
                     }
 
                     tr:nth-child(even) {
-                        background-color: #f8fafc !important;
+                        background-color: #f1f5f9 !important;
                     }
 
                     /* Ranking and Summary styling */
