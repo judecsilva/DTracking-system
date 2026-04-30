@@ -2421,16 +2421,29 @@ async function pullFromCloud() {
 
             if (staffRes.error) throw staffRes.error;
 
-            if (sRes.data) await db.settings.bulkPut(sRes.data.map(s => ({
-                id: s.id, targetAmount: s.target_amount, workingDays: s.working_days,
-                adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
-            })));
+            if (sRes.data) {
+                await db.settings.clear();
+                await db.settings.bulkPut(sRes.data.map(s => ({
+                    id: s.id, targetAmount: s.target_amount, workingDays: s.working_days,
+                    adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
+                })));
+            }
+
+            // Helper to delete local records that were removed from the cloud
+            const removeDeleted = async (table, cloudIdsArr) => {
+                const cloudIds = new Set(cloudIdsArr);
+                const syncedLocal = await db[table].where('syncStatus').equals('synced').toArray();
+                const toDelete = syncedLocal.filter(r => !cloudIds.has(r.id)).map(r => r.id);
+                if (toDelete.length > 0) await db[table].bulkDelete(toDelete);
+            };
 
             if (staffRes.data) {
                 const mappedStaff = staffRes.data.map(s => ({
                     id: s.id, name: s.name, routeName: s.route_name, phone: s.phone,
                     password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id, syncStatus: 'synced'
                 }));
+                
+                await removeDeleted('staff', mappedStaff.map(r => r.id));
                 
                 // Deduplicate logic: Fix ID mismatches between Cloud and Local
                 for (const r of mappedStaff) {
@@ -2459,6 +2472,9 @@ async function pullFromCloud() {
                     reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
                     syncStatus: 'synced'
                 }));
+                
+                await removeDeleted('dailyIssues', mapped.map(r => r.id));
+                
                 // Bulk clean duplicates
                 for (const r of mapped) {
                     const ex = await db.dailyIssues.where('[date+staffId]').equals([r.date, r.staffId]).first();
@@ -2476,6 +2492,9 @@ async function pullFromCloud() {
                     returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
                     avail_reload: r.avail_reload, syncStatus: 'synced'
                 }));
+                
+                await removeDeleted('dailySales', mapped.map(r => r.id));
+                
                 for (const r of mapped) {
                     const ex = await db.dailySales.where('[date+staffId]').equals([r.date, r.staffId]).first();
                     if (ex && ex.id !== r.id) await db.dailySales.delete(ex.id);
