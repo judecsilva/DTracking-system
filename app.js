@@ -1469,23 +1469,35 @@ async function loadStaffDropdowns() {
     let reportDrop = document.getElementById('report-staff');
     let historyDrop = document.getElementById('history-staff');
 
+    // Preserve existing selections so background sync doesn't wipe them out
+    const currentIssue = issueDrop ? issueDrop.value : null;
+    const currentCollect = collectDrop ? collectDrop.value : null;
+    const currentReport = reportDrop ? reportDrop.value : null;
+    const currentHistory = historyDrop ? historyDrop.value : null;
+
     // Clear existing
-    issueDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
-    collectDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
+    if (issueDrop) issueDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
+    if (collectDrop) collectDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
     if (reportDrop) reportDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
     if (historyDrop) historyDrop.innerHTML = '<option value="" disabled selected>Select Staff...</option>';
 
     list.forEach(s => {
-        issueDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
-        collectDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
+        if (issueDrop) issueDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
+        if (collectDrop) collectDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
         if (reportDrop) reportDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
         if (historyDrop) historyDrop.insertAdjacentHTML('beforeend', `<option value="${s.id}">${s.name} - ${s.routeName}</option>`);
     });
 
+    // Restore selections
+    if (issueDrop && currentIssue) issueDrop.value = currentIssue;
+    if (collectDrop && currentCollect) collectDrop.value = currentCollect;
+    if (reportDrop && currentReport) reportDrop.value = currentReport;
+    if (historyDrop && currentHistory) historyDrop.value = currentHistory;
+
     // CRITICAL FIX: If a distributor's dropdown gets re-rendered during background cloud sync, we MUST re-select their ID.
     if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'distributor') {
-        issueDrop.value = currentUser.id;
-        collectDrop.value = currentUser.id;
+        if (issueDrop) issueDrop.value = currentUser.id;
+        if (collectDrop) collectDrop.value = currentUser.id;
     }
 
     // Default dates
