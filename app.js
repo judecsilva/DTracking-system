@@ -815,7 +815,8 @@ function calculateIssueTotal() {
 async function handleIssueSubmit(e) {
     e.preventDefault();
     const date = document.getElementById('issue-date').value;
-    const staffId = Number(document.getElementById('issue-staff').value);
+    const staffIdRaw = document.getElementById('issue-staff').value;
+    const staffId = staffIdRaw ? (isNaN(staffIdRaw) ? staffIdRaw : Number(staffIdRaw)) : '';
 
     if (!staffId) {
         Swal.fire({ icon: 'warning', title: 'Oops', text: 'Please select a staff member', background: '#1e293b', color: '#fff' });
@@ -961,7 +962,8 @@ let previousShortage = 0; // State
 
 async function handleLoadExpectedData(isAuto = false) {
     const date = document.getElementById('collect-date').value;
-    const staffId = Number(document.getElementById('collect-staff').value);
+    const staffIdRaw = document.getElementById('collect-staff').value;
+    const staffId = staffIdRaw ? (isNaN(staffIdRaw) ? staffIdRaw : Number(staffIdRaw)) : '';
     if (!staffId) {
         if (!isAuto) Swal.fire({ icon: 'warning', title: 'Oops', text: 'Select staff first', background: '#1e293b', color: '#fff' });
         return;
@@ -1177,7 +1179,8 @@ async function handleCollectionSubmit(e) {
     if (!currentIssuedData) return;
 
     const date = document.getElementById('collect-date').value;
-    const staffId = Number(document.getElementById('collect-staff').value);
+    const staffIdRaw = document.getElementById('collect-staff').value;
+    const staffId = staffIdRaw ? (isNaN(staffIdRaw) ? staffIdRaw : Number(staffIdRaw)) : '';
 
     const soldCard48 = Number(document.getElementById('sold-c48').value) || 0;
     const soldCard95 = Number(document.getElementById('sold-c95').value) || 0;
@@ -1551,7 +1554,8 @@ async function renderStaffTable() {
 }
 
 async function loadPreviousBalances() {
-    const staffId = Number(document.getElementById('issue-staff').value);
+    const staffIdRaw = document.getElementById('issue-staff').value;
+    const staffId = staffIdRaw ? (isNaN(staffIdRaw) ? staffIdRaw : Number(staffIdRaw)) : '';
     const selectedDate = document.getElementById('issue-date').value;
 
     // 1. Always reset "New" fields FIRST
