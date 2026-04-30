@@ -1433,10 +1433,24 @@
 
                     <div id="history-result-area"
                         class="hidden glass-panel overflow-hidden border-indigo-500/10 shadow-xl bg-slate-800/20">
+                        
+                        <!-- Print-Only Header -->
+                        <div class="print-only mb-6 border-b-2 border-black pb-4">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h1 class="text-2xl font-black uppercase tracking-tighter text-black">CRDMS Network</h1>
+                                    <p class="text-xs font-bold text-gray-600 uppercase tracking-widest">Distributor Activity Ledger</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Generated On</p>
+                                    <p class="text-xs font-mono font-bold text-black" id="history-print-gen-date"></p>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="p-5 border-b border-slate-700/50 flex justify-between items-center bg-[#1e293b]/50">
                             <div>
-                                <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name
-                                </h3>
+                                <h3 class="text-lg font-bold text-indigo-400" id="history-title-name">Distributor Name</h3>
                                 <p class="text-xs text-gray-400" id="history-title-month">Month</p>
                             </div>
                             <button onclick="printHistoryReport()" class="btn-secondary py-1.5 px-4 text-xs no-print">
@@ -1445,8 +1459,7 @@
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-xs">
-                                <thead
-                                    class="bg-indigo-600/10 text-[9px] font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20">
+                                <thead class="bg-indigo-600/10 text-[9px] font-black text-indigo-400 uppercase tracking-widest border-b border-indigo-500/20">
                                     <tr>
                                         <th class="py-3 px-3">Date</th>
                                         <th class="py-3 px-3">Cards (Total FV)</th>
@@ -1458,13 +1471,17 @@
                                         <th class="py-3 px-3 text-center">Action</th>
                                     </tr>
                                 </thead>
-                                <tbody id="history-tbody" class="divide-y divide-slate-700/50">
-                                    <!-- Dynamic Rows -->
-                                </tbody>
-                                <tfoot id="history-tfoot" class="bg-slate-900 border-t border-slate-600">
-                                    <!-- Totals -->
-                                </tfoot>
+                                <tbody id="history-tbody" class="divide-y divide-slate-700/50"></tbody>
+                                <tfoot id="history-tfoot" class="bg-slate-900 border-t border-slate-600"></tfoot>
                             </table>
+                        </div>
+
+                        <!-- Print-Only Footer -->
+                        <div class="print-only mt-10 pt-4 border-t border-gray-200">
+                            <div class="flex justify-between items-center opacity-40">
+                                <p class="text-[8px] font-bold text-gray-500 uppercase tracking-widest">© 2026 CRDMS Distribution Network • Authenticated History Log</p>
+                                <p class="text-[8px] font-bold text-gray-500 uppercase tracking-widest">System Solution By JudeCSilva</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1510,7 +1527,9 @@
                     body:not(.print-history) #reports>*:not(#report-printable-area),
                     body.print-history #app-container>*:not(.flex-1),
                     body.print-history #app-container .flex-1>*:not(#history),
-                    body.print-history #history>*:not(#history-result-area) {
+                    body.print-history #history>*:not(#history-result-area),
+                    body.print-history #history-result-area th:last-child,
+                    body.print-history #history-result-area td:last-child {
                         display: none !important;
                     }
 
@@ -1594,10 +1613,13 @@
                         margin: 0 !important;
                     }
 
-                    #report-title-meta {
+                    #report-title-meta, .history-print-meta {
                         font-size: 9pt !important;
                         color: #444 !important;
                     }
+                    
+                    .print-only { display: none; }
+                    body.print-history .print-only { display: block !important; }
 
                     /* Grid adjustment for print */
                     .grid {

@@ -2772,6 +2772,8 @@ window.deleteHistoryRecord = async function (date, staffId) {
 }
 
 window.printHistoryReport = function () {
+    const genDateEl = document.getElementById('history-print-gen-date');
+    if (genDateEl) genDateEl.innerText = new Date().toLocaleString();
     document.body.classList.add('print-history');
     window.print();
     setTimeout(() => {
