@@ -393,6 +393,9 @@ function switchTab(tabId) {
 
 async function refreshDashboardWithMonth() {
     await updateDashboardCard();
+    if (currentUser.role === 'admin') {
+        await renderDistributorStats();
+    }
     showToast('Dashboard updated for ' + document.getElementById('dashboard-month-selector').value, 'info');
 }
 
@@ -572,7 +575,8 @@ async function renderDistributorStats() {
         list = list.filter(s => s.name.toLowerCase().includes(query) || s.routeName.toLowerCase().includes(query));
     }
 
-    const currentMonth = getCurrentMonthString();
+    const dashMonthSelector = document.getElementById('dashboard-month-selector');
+    const currentMonth = (dashMonthSelector && dashMonthSelector.value) ? dashMonthSelector.value : getCurrentMonthString();
     const todayStr = getTodayString();
     const tbody = document.getElementById('distributor-performance-list');
     if (!tbody) return;
