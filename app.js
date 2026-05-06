@@ -327,7 +327,13 @@ function formatCurrency(amount) {
     return 'Rs. ' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function switchTab(tabId) {
+async function switchTab(tabId) {
+    // Security Check for Settings
+    if (tabId === 'settings' && currentUser.role === 'admin') {
+        const hasAccess = await verifySettingsAccess();
+        if (!hasAccess) return; // Keep current tab active
+    }
+
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.add('hidden');
     });
@@ -388,6 +394,84 @@ function switchTab(tabId) {
         if (reportStaff) reportStaff.value = "";
         if (reportMonth) reportMonth.value = "";
         if (reportResult) reportResult.classList.add('hidden');
+    }
+}
+
+async function verifySettingsAccess() {
+    let settings = await db.settings.toCollection().first();
+    
+    // If no password set yet, ask to create one
+    if (!settings || !settings.settingsPassword) {
+        const { value: password } = await Swal.fire({
+            title: 'Set Settings PIN',
+            text: 'Choose a PIN/Password to protect your settings page.',
+            input: 'password',
+            inputPlaceholder: 'Enter new PIN',
+            background: '#1e293b',
+            color: '#fff',
+            confirmButtonColor: '#4f46e5',
+            inputAttributes: {
+                autocapitalize: 'off',
+                autocorrect: 'off'
+            },
+            showCancelButton: true
+        });
+
+        if (password) {
+            if (settings) {
+                await db.settings.update(settings.id, { settingsPassword: password });
+            } else {
+                await db.settings.add({ settingsPassword: password, targetAmount: 0, workingDays: 25 });
+            }
+            showToast('Settings PIN Set Successfully!', 'success');
+            return true;
+        }
+        return false;
+    }
+
+    // Ask for password
+    const { value: inputPassword } = await Swal.fire({
+        title: 'Settings Locked',
+        text: 'Please enter your Settings PIN to continue.',
+        input: 'password',
+        inputPlaceholder: 'Enter PIN',
+        background: '#1e293b',
+        color: '#fff',
+        confirmButtonColor: '#4f46e5',
+        showCancelButton: true,
+        inputAttributes: {
+            autocapitalize: 'off',
+            autocorrect: 'off'
+        }
+    });
+
+    if (inputPassword === settings.settingsPassword) {
+        return true;
+    } else if (inputPassword !== undefined) {
+        showToast('Incorrect PIN!', 'error');
+    }
+    return false;
+}
+
+async function changeSettingsPassword() {
+    const hasAccess = await verifySettingsAccess();
+    if (!hasAccess) return;
+
+    const { value: newPassword } = await Swal.fire({
+        title: 'Change Settings PIN',
+        text: 'Enter your new PIN/Password.',
+        input: 'password',
+        inputPlaceholder: 'New PIN',
+        background: '#1e293b',
+        color: '#fff',
+        confirmButtonColor: '#4f46e5',
+        showCancelButton: true
+    });
+
+    if (newPassword) {
+        let settings = await db.settings.toCollection().first();
+        await db.settings.update(settings.id, { settingsPassword: newPassword });
+        showToast('PIN Updated!', 'success');
     }
 }
 
