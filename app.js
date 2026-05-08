@@ -327,6 +327,10 @@ function formatCurrency(amount) {
     return 'Rs. ' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function formatNoDecimals(amount) {
+    return 'Rs. ' + Math.round(Number(amount)).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
 async function switchTab(tabId) {
     // Security Check for Settings
     if (tabId === 'settings' && currentUser.role === 'admin') {
@@ -553,7 +557,7 @@ async function updateDashboardCard() {
 
     let totalSales = monthSales.reduce((sum, record) => {
         let saleValue = (Number(record.soldCard48 || 0) * 48) +
-            (Number(record.soldCard95 || 0) * 95) +
+            (Number(record.soldCard95 || 0) * 95.04) +
             (Number(record.soldCard96 || 0) * 96) +
             Number(record.soldReloadCash || 0);
         return sum + saleValue;
@@ -702,7 +706,7 @@ async function renderDistributorStats() {
         let totalS = 0;
         let totalC = 0;
         staffMonthSales.forEach(r => {
-            const val = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96) + Number(r.soldReloadCash || 0);
+            const val = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95.04) + (Number(r.soldCard96 || 0) * 96) + Number(r.soldReloadCash || 0);
             totalS += val;
             totalC += Number(r.totalCommission || 0);
         });
@@ -750,7 +754,7 @@ async function renderDistributorStats() {
                     </div>
                 </td>
                 <td class="py-4 px-6 text-right text-sm font-black text-indigo-400 font-mono">
-                    ${formatCurrency(totalC)}
+                    ${formatNoDecimals(totalC)}
                 </td>
             </tr>
         `;
@@ -774,7 +778,7 @@ async function updatePerformanceChart(monthSales, monthlyTarget, workingDays) {
         const day = parseInt(record.date.split('-')[2]);
         if (day <= daysInMonth) {
             const saleValue = (Number(record.soldCard48 || 0) * 48) +
-                (Number(record.soldCard95 || 0) * 95) +
+                (Number(record.soldCard95 || 0) * 95.04) +
                 (Number(record.soldCard96 || 0) * 96) +
                 Number(record.soldReloadCash || 0);
             dailyData[day - 1] += saleValue;
@@ -897,22 +901,22 @@ function calculateIssueTotal() {
 
     // NEW: Update individual row logic for value display
     document.getElementById('issue-val-c48').value = formatCurrency(t48 * 48);
-    document.getElementById('issue-val-c95').value = formatCurrency(t95 * 95);
+    document.getElementById('issue-val-c95').value = formatCurrency(t95 * 95.04);
     document.getElementById('issue-val-c96').value = formatCurrency(t96 * 96);
 
     document.getElementById('issue-total-reload-disp').innerText = formatCurrency(tReload);
     document.getElementById('issue-total-reload-val').value = tReload;
 
-    const prevTotalValue = (p48 * 48) + (p95 * 95) + (p96 * 96) + pReload;
-    const newTotalValue = (n48 * 48) + (n95 * 95) + (n96 * 96) + nReload;
+    const prevTotalValue = (p48 * 48) + (p95 * 95.04) + (p96 * 96) + pReload;
+    const newTotalValue = (n48 * 48) + (n95 * 95.04) + (n96 * 96) + nReload;
     const grandTotalValue = prevTotalValue + newTotalValue;
 
     // Calculate Shop Commission expectation and Card Total
-    const totalCardCost = (t48 * 48) + (t95 * 95) + (t96 * 96);
-    const expectedComm = (t48 * 2) + (t95 * 4) + (t96 * 4); // 50-48=2, 99-95=4, 100-96=4
+    const totalCardCost = (t48 * 48) + (t95 * 95.04) + (t96 * 96);
+    const expectedComm = (t48 * 2) + (t95 * 4) + (t96 * 4);
 
     document.getElementById('issue-card-total-val').innerText = formatCurrency(totalCardCost);
-    document.getElementById('issue-shop-comm-val').innerText = formatCurrency(expectedComm);
+    document.getElementById('issue-shop-comm-val').innerText = formatNoDecimals(expectedComm);
     document.getElementById('issue-prev-total-val').innerText = formatCurrency(prevTotalValue);
     document.getElementById('issue-new-total-val').innerText = formatCurrency(newTotalValue);
     document.getElementById('issue-grand-total-val').innerText = formatCurrency(grandTotalValue);
@@ -944,7 +948,7 @@ async function handleIssueSubmit(e) {
     const t96 = p96 + n96;
     const tReload = pReload + nReload;
 
-    const totalIssuedValue = (n48 * 48) + (n95 * 95) + (n96 * 96) + nReload;
+    const totalIssuedValue = (n48 * 48) + (n95 * 95.04) + (n96 * 96) + nReload;
 
     const data = {
         date, staffId,
@@ -1107,7 +1111,7 @@ async function handleLoadExpectedData(isAuto = false) {
                     card48: fromSales ? (source.returnedCard48 || 0) : (source.card48 || 0),
                     card95: fromSales ? (source.returnedCard95 || 0) : (source.card95 || 0),
                     card96: fromSales ? (source.returnedCard96 || 0) : (source.card96 || 0),
-                    reloadCash: fromSales ? (Number(source.availReload || 0) - Number(source.soldReloadCash || 0)) : (source.reloadCash || 0)
+                    reloadCash: fromSales ? (Number(source.availReload || 0) - (Number(source.soldReloadCash || 0) + Math.round(Number(source.soldReloadCash || 0) * 0.063828))) : (source.reloadCash || 0)
                 };
                 if (!isAuto) showToast('No issue today: Rolled over yesterday\'s stock', 'info');
             }
@@ -1223,13 +1227,13 @@ function calculateExpectedCash() {
 
     // Total Card Value Calculation
     const cardVal48 = s48 * 48;
-    const cardVal95 = s95 * 95;
+    const cardVal95 = s95 * 95.04;
     const cardVal96 = s96 * 96;
     const totalCardsValue = cardVal48 + cardVal95 + cardVal96;
 
     // Commission Calculations (Informative only)
     const commCard = (s48 * 2) + (s95 * 4) + (s96 * 4);
-    const commReload = (sReload * 0.0638);
+    const commReload = (sReload * 0.063828);
     const totalComm = commCard + commReload;
 
     // Expected Cash logic: (Cards at Cost) + (Full Reload) + (Prev Debt)
@@ -1243,12 +1247,13 @@ function calculateExpectedCash() {
     document.getElementById('val-c96').innerText = cardVal96.toLocaleString();
     document.getElementById('coll-total-card-val').innerText = `Rs. ${totalCardsValue.toLocaleString()}`;
 
-    document.getElementById('coll-card-comm').innerText = formatCurrency(commCard);
-    document.getElementById('coll-reload-comm').innerText = `Com: Rs. ${commReload.toFixed(2)}`;
+    document.getElementById('coll-card-comm').innerText = formatNoDecimals(commCard);
+    document.getElementById('coll-reload-comm').innerText = `Com: ${formatNoDecimals(commReload)}`;
     document.getElementById('coll-today-sales-disp').innerText = formatCurrency(todaySalesOnly);
     document.getElementById('coll-expected-disp').innerText = formatCurrency(expected);
-    document.getElementById('coll-total-comm-disp').innerText = formatCurrency(totalComm);
-    document.getElementById('coll-closing-reload-disp').innerText = `Rollover Reload: Rs. ${(availReload - sReload).toLocaleString()}`;
+    document.getElementById('coll-total-comm-disp').innerText = formatNoDecimals(totalComm);
+    const reloadCommRounded = Math.round(sReload * 0.063828);
+    document.getElementById('coll-closing-reload-disp').innerText = `Rollover Reload: Rs. ${(availReload - (sReload + reloadCommRounded)).toLocaleString()}`;
 
     const actualCash = Number(document.getElementById('collect-handcash').value) || 0;
     const diffBadge = document.getElementById('collect-diff');
@@ -1301,9 +1306,9 @@ async function handleCollectionSubmit(e) {
     const availReload = Number(document.getElementById('avail-reload-val').value) || 0;
 
     const commCard = (soldCard48 * 2) + (soldCard95 * 4) + (soldCard96 * 4);
-    const commReload = (soldReloadCash * 0.0638);
+    const commReload = (soldReloadCash * 0.063828);
     const totalCommission = commCard + commReload;
-    const totalCardsValue = (soldCard48 * 48) + (soldCard95 * 95) + (soldCard96 * 96);
+    const totalCardsValue = (soldCard48 * 48) + (soldCard95 * 95.04) + (soldCard96 * 96);
 
     // Expected Cash from Today: (Cards @ Cost) + (Full Reload) - No commission subtraction
     const todayExpected = totalCardsValue + soldReloadCash;
@@ -1722,7 +1727,8 @@ async function loadPreviousBalances() {
             document.getElementById('issue-prev-c96').value = sourceRecord.returnedCard96 || sourceRecord.returned_card96 || 0;
             const avail = Number(sourceRecord.availReload !== undefined ? sourceRecord.availReload : (sourceRecord.avail_reload || 0));
             const sold = Number(sourceRecord.soldReloadCash || 0);
-            document.getElementById('issue-prev-reload').value = (avail - sold) || 0;
+            const soldWithComm = sold + Math.round(sold * 0.063828);
+            document.getElementById('issue-prev-reload').value = (avail - soldWithComm) || 0;
         } else {
             // It's just an issue record (no settlement yet): they have the FULL total
             document.getElementById('issue-prev-c48').value = sourceRecord.card48 || 0;
@@ -2128,7 +2134,7 @@ async function renderFullStaffSummary(monthStr, container) {
         let totalS = 0;
         let totalC = 0;
         salesRecords.forEach(r => {
-            totalS += (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96) + Number(r.soldReloadCash || 0);
+            totalS += (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95.04) + (Number(r.soldCard96 || 0) * 96) + Number(r.soldReloadCash || 0);
             totalC += Number(r.totalCommission || 0);
         });
 
@@ -2239,7 +2245,7 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
     let bestDay = { val: 0, date: 'N/A' };
 
     records.forEach(r => {
-        const cVal = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96);
+        const cVal = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95.04) + (Number(r.soldCard96 || 0) * 96);
         const dayTotal = cVal + Number(r.soldReloadCash || 0);
         totalSales += dayTotal;
         totalCardsVal += cVal;
@@ -2291,7 +2297,7 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
     let tCardsValue = 0, tSales = 0, tReload = 0, tCash = 0;
 
     records.sort((a, b) => a.date.localeCompare(b.date)).forEach(r => {
-        const cardsValue = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96);
+        const cardsValue = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95.04) + (Number(r.soldCard96 || 0) * 96);
         const dayTotalSales = cardsValue + Number(r.soldReloadCash || 0);
 
         tCardsValue += cardsValue;
@@ -2362,7 +2368,7 @@ async function updateStaffPerformanceDisplay(staffId) {
         }
 
         const monthAchieved = sales.reduce((sum, r) => {
-            const cardVal = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95) + (Number(r.soldCard96 || 0) * 96);
+            const cardVal = (Number(r.soldCard48 || 0) * 48) + (Number(r.soldCard95 || 0) * 95.04) + (Number(r.soldCard96 || 0) * 96);
             return sum + cardVal + Number(r.soldReloadCash || 0);
         }, 0);
 
@@ -2741,11 +2747,11 @@ window.generateHistoryView = async function () {
         let shortAmt = 0;
 
         if (sale) {
-            saleAmt = (sale.soldCard48 * 48) + (sale.soldCard95 * 95) + (sale.soldCard96 * 96) + sale.soldReloadCash;
+            saleAmt = (sale.soldCard48 * 48) + (sale.soldCard95 * 95.04) + (sale.soldCard96 * 96) + sale.soldReloadCash;
             commAmt = sale.totalCommission || 0;
             // Calculate Shop Commission (Cards + Reload)
             const cardComm = (sale.soldCard48 * 2) + (sale.soldCard95 * 4) + (sale.soldCard96 * 4);
-            const reloadComm = (Number(sale.soldReloadCash || 0) * 0.0638);
+            const reloadComm = (Number(sale.soldReloadCash || 0) * 0.063828);
             const shopComm = cardComm + reloadComm;
 
             handAmt = sale.handCash || 0;
@@ -2753,7 +2759,7 @@ window.generateHistoryView = async function () {
 
             // Re-calculate how many cards in total FV was brought out that day
             if (issue) {
-                cardFV = (issue.card48 * 48) + (issue.card95 * 95) + (issue.card96 * 96);
+                cardFV = (issue.card48 * 48) + (issue.card95 * 95.04) + (issue.card96 * 96);
                 reloadIssued = issue.reloadCash;
             } else {
                 // Fallback: calculate card face value from sold quantities if no issue record
@@ -2780,7 +2786,7 @@ window.generateHistoryView = async function () {
                     <td class="py-3 px-3">${formatCurrency(cardFV)}</td>
                     <td class="py-3 px-3 text-right">${formatCurrency(reloadIssued)}</td>
                     <td class="py-3 px-3 text-right text-emerald-400 font-bold">${formatCurrency(saleAmt)}</td>
-                    <td class="py-3 px-3 text-right text-orange-400">${formatCurrency(shopComm)}</td>
+                    <td class="py-3 px-3 text-right text-orange-400 font-bold">${formatNoDecimals(shopComm)}</td>
                     <td class="py-3 px-3 text-right text-blue-400 font-bold">${formatCurrency(handAmt)}</td>
                     <td class="py-3 px-3 text-right ${shortClass} font-bold">${formatCurrency(Math.abs(shortAmt))} ${shortAmt > 0 ? '(S)' : shortAmt < 0 ? '(E)' : ''}</td>
                     <td class="py-3 px-3 text-center flex justify-center gap-1">
@@ -2795,7 +2801,7 @@ window.generateHistoryView = async function () {
             `);
         } else if (issue && !sale) {
             // Issued but not yet collected
-            cardFV = (issue.card48 * 48) + (issue.card95 * 95) + (issue.card96 * 96);
+            cardFV = (issue.card48 * 48) + (issue.card95 * 95.04) + (issue.card96 * 96);
             reloadIssued = issue.reloadCash;
             tbody.insertAdjacentHTML('beforeend', `
                 <tr class="hover:bg-slate-800/50 transition-colors opacity-60">
@@ -2826,7 +2832,7 @@ window.generateHistoryView = async function () {
             <th class="py-3 px-3 text-gray-300">-</th>
             <th class="py-3 px-3 text-right text-gray-300">-</th>
             <th class="py-3 px-3 text-right text-emerald-400 font-black">${formatCurrency(grandTotalSales)}</th>
-            <th class="py-3 px-3 text-right text-orange-400 font-black">${formatCurrency(grandTotalComm)}</th>
+            <th class="py-3 px-3 text-right text-orange-400 font-black">${formatNoDecimals(grandTotalComm)}</th>
             <th class="py-3 px-3 text-right text-blue-400 font-black">${formatCurrency(grandTotalHandCash)}</th>
             <th class="py-3 px-3 text-right ${netClass} font-black">${formatCurrency(Math.abs(netShortage))} ${netShortage > 0 ? '(S)' : netShortage < 0 ? '(E)' : ''}</th>
             <th class="py-3 px-3"></th>
