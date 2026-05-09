@@ -1651,6 +1651,9 @@ async function renderStaffTable() {
                 <td class="py-3 px-4 text-gray-400">${s.routeName}</td>
                 <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(s.target || 0)}</td>
                 <td class="py-3 px-4 text-right">
+                    <button onclick="wipeStaffData('${s.id}')" class="text-amber-400 hover:text-amber-300 p-2 rounded-lg hover:bg-amber-400/10 transition-colors mr-1" title="Wipe All History Data">
+                        <i class="fas fa-broom"></i>
+                    </button>
                     <button onclick="editStaff('${s.id}')" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
                         <i class="fas fa-edit"></i>
                     </button>
@@ -1806,6 +1809,48 @@ window.deleteStaff = async function (strId) {
                 background: '#1e293b',
                 color: '#fff'
             });
+        }
+    }
+}
+
+window.wipeStaffData = async function(strId) {
+    let id = strId ? (isNaN(strId) ? strId : Number(strId)) : '';
+    const staff = await db.staff.get(id);
+    if (!staff) return;
+
+    let res = await Swal.fire({
+        title: `Wipe all data for ${staff.name}?`,
+        text: 'This will permanently delete ALL sales and issue history for this distributor. The distributor profile itself will remain.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f59e0b',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Yes, Wipe History',
+        background: '#1e293b',
+        color: '#fff'
+    });
+
+    if (res.isConfirmed) {
+        try {
+            // 1. Sync Delete to Cloud
+            if (typeof supabaseClient !== 'undefined') {
+                await supabaseClient.from('daily_issues').delete().eq('staff_id', id);
+                await supabaseClient.from('daily_sales').delete().eq('staff_id', id);
+            }
+
+            // 2. Delete locally
+            await db.dailyIssues.where('staffId').equals(id).delete();
+            await db.dailySales.where('staffId').equals(id).delete();
+            // Fallback for mixed ID types
+            await db.dailyIssues.where('staffId').equals(String(id)).delete();
+            await db.dailySales.where('staffId').equals(String(id)).delete();
+
+            showToast(`History wiped for ${staff.name}`);
+            updateDashboardCard();
+            if (typeof renderDistributorStats === 'function') renderDistributorStats();
+        } catch (error) {
+            console.error("Wipe failed:", error);
+            showToast('Wipe Failed: ' + error.message, 'error');
         }
     }
 }
