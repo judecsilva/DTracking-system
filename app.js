@@ -87,6 +87,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (currentUser.role === 'admin') {
                     if (typeof renderStaffTable === 'function') await renderStaffTable();
                     if (typeof renderDistributorStats === 'function') await renderDistributorStats();
+                    
+                    // Refresh Admin Photo in UI
+                    const settings = await db.settings.toCollection().first();
+                    const photo = settings ? settings.adminPhoto : null;
+                    const userPhoto = document.getElementById('display-user-photo');
+                    const userIcon = document.getElementById('display-user-icon');
+                    if (userPhoto && photo) {
+                        userPhoto.src = photo;
+                        userPhoto.classList.remove('hidden');
+                        userIcon.classList.add('hidden');
+                    }
                 } else if (currentUser.role === 'distributor') {
                     if (typeof loadPreviousBalances === 'function') await loadPreviousBalances();
                     if (typeof handleLoadExpectedData === 'function') await handleLoadExpectedData(true);
@@ -238,6 +249,29 @@ async function showApp() {
     }
     document.getElementById('display-user-name').innerText = currentUser.name || 'CRDMS User';
     document.getElementById('display-user-role').innerText = currentUser.role.toUpperCase() + ' MODE';
+
+    // Load Profile Photo
+    const userPhoto = document.getElementById('display-user-photo');
+    const userIcon = document.getElementById('display-user-icon');
+    
+    if (currentUser.role === 'admin') {
+        const settings = await db.settings.toCollection().first();
+        const photo = settings ? settings.adminPhoto : null;
+        if (photo) {
+            userPhoto.src = photo;
+            userPhoto.classList.remove('hidden');
+            userIcon.classList.add('hidden');
+            
+            // Also update settings preview if it exists
+            const settingPreview = document.getElementById('admin-setting-preview');
+            const settingIcon = document.getElementById('admin-setting-icon');
+            if (settingPreview) {
+                settingPreview.src = photo;
+                settingPreview.classList.remove('hidden');
+                settingIcon.classList.add('hidden');
+            }
+        }
+    }
 
     // 0. Silent background deduplication — cleans any ID-conflict duplicates silently
     deduplicateLocalDB();
@@ -2607,7 +2641,8 @@ async function pullFromCloud() {
                 await db.settings.clear();
                 await db.settings.bulkPut(sRes.data.map(s => ({
                     id: s.id, targetAmount: s.target_amount, workingDays: s.working_days,
-                    adminPassword: s.admin_password, lastBackupDate: s.last_backup_date
+                    adminPassword: s.admin_password, lastBackupDate: s.last_backup_date,
+                    adminPhoto: s.admin_photo
                 })));
             }
 
@@ -3025,3 +3060,67 @@ async function performHardReset() {
 }
 
 
+
+async function handleAdminPhotoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Check size (limit to 1MB for Base64 storage)
+    if (file.size > 1024 * 1024) {
+        return Swal.fire({
+            icon: 'error',
+            title: 'File Too Large',
+            text: 'Please select an image smaller than 1MB.',
+            background: '#1e293b',
+            color: '#fff'
+        });
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const base64 = e.target.result;
+        
+        try {
+            showToast('Saving photo...', 'info');
+            
+            // 1. Update Local DB
+            let settings = await db.settings.toCollection().first();
+            if (settings) {
+                await db.settings.update(settings.id, { adminPhoto: base64 });
+            } else {
+                await db.settings.add({ adminPhoto: base64 });
+            }
+
+            // 2. Update UI
+            const userPhoto = document.getElementById('display-user-photo');
+            const userIcon = document.getElementById('display-user-icon');
+            const settingPreview = document.getElementById('admin-setting-preview');
+            const settingIcon = document.getElementById('admin-setting-icon');
+
+            if (userPhoto) {
+                userPhoto.src = base64;
+                userPhoto.classList.remove('hidden');
+                userIcon.classList.add('hidden');
+            }
+            if (settingPreview) {
+                settingPreview.src = base64;
+                settingPreview.classList.remove('hidden');
+                settingIcon.classList.add('hidden');
+            }
+
+            showToast('Photo updated successfully');
+
+            // 3. Sync to Cloud
+            if (typeof supabaseClient !== 'undefined') {
+                await syncToCloud('settings', { 
+                    id: 1, 
+                    admin_photo: base64 
+                }, { id: 1 });
+            }
+        } catch (err) {
+            console.error("Photo save error:", err);
+            showToast('Failed to save photo', 'error');
+        }
+    };
+    reader.readAsDataURL(file);
+}
