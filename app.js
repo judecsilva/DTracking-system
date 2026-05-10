@@ -232,6 +232,10 @@ async function showApp() {
     document.getElementById('login-container').classList.add('hidden');
     document.getElementById('app-content').classList.remove('hidden');
 
+    if (currentUser && currentUser.role === 'admin' && currentUser.name === 'Administrator') {
+        currentUser.name = 'CRDMS- PRADEEP KUMARA';
+        localStorage.setItem('crdms_user', JSON.stringify(currentUser));
+    }
     document.getElementById('display-user-name').innerText = currentUser.name || 'CRDMS User';
     document.getElementById('display-user-role').innerText = currentUser.role.toUpperCase() + ' MODE';
 
@@ -1429,7 +1433,7 @@ function setupEventListeners() {
             const adminPass = (settings && settings.adminPassword) ? settings.adminPassword : 'admin123';
 
             if (user === 'admin' && pass === adminPass) {
-                currentUser = { id: 0, name: 'Administrator', role: 'admin' };
+                currentUser = { id: 0, name: 'CRDMS- PRADEEP KUMARA', role: 'admin' };
                 localStorage.setItem('crdms_user', JSON.stringify(currentUser));
                 showApp();
                 return;
