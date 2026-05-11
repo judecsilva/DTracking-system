@@ -1198,10 +1198,10 @@ async function handleLoadExpectedData(isAuto = false) {
         if (lastSale && lastSale.shortageAmt !== 0) {
             previousShortage = lastSale.shortageAmt;
             if (previousShortage > 0) {
-                pBadge.innerText = 'Prev Shortage: Rs. ' + previousShortage;
+                pBadge.innerText = 'Prev Shortage: ' + formatCurrency(previousShortage);
                 pBadge.className = "mt-1 text-[9px] font-black uppercase text-red-500 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 block w-max";
             } else {
-                pBadge.innerText = 'Prev Excess (Credit): Rs. ' + Math.abs(previousShortage);
+                pBadge.innerText = 'Prev Excess (Credit): ' + formatCurrency(Math.abs(previousShortage));
                 pBadge.className = "mt-1 text-[9px] font-black uppercase text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 block w-max";
             }
             pBadge.classList.remove('hidden');
@@ -1280,10 +1280,10 @@ function calculateExpectedCash() {
     const expected = todayExpected + previousShortage;
 
     // Update UI
-    document.getElementById('val-c48').innerText = cardVal48.toLocaleString();
-    document.getElementById('val-c95').innerText = cardVal95.toLocaleString();
-    document.getElementById('val-c96').innerText = cardVal96.toLocaleString();
-    document.getElementById('coll-total-card-val').innerText = `Rs. ${totalCardsValue.toLocaleString()}`;
+    document.getElementById('val-c48').innerText = cardVal48.toFixed(2);
+    document.getElementById('val-c95').innerText = cardVal95.toFixed(2);
+    document.getElementById('val-c96').innerText = cardVal96.toFixed(2);
+    document.getElementById('coll-total-card-val').innerText = formatCurrency(totalCardsValue);
 
     document.getElementById('coll-card-comm').innerText = formatNoDecimals(commCard);
     document.getElementById('coll-reload-comm').innerText = `Com: ${formatNoDecimals(commReload)}`;
@@ -1304,11 +1304,11 @@ function calculateExpectedCash() {
         diffBadge.className = 'mt-2 text-xs font-bold px-2 py-1 rounded inline-block bg-emerald-500/20 text-emerald-400 border border-emerald-500/50';
     } else if (actualCash < expected) {
         const short = expected - actualCash;
-        diffBadge.innerText = 'Shortage: Rs.' + short;
+        diffBadge.innerText = 'Shortage: ' + formatCurrency(short);
         diffBadge.className = 'mt-2 text-xs font-bold px-2 py-1 rounded inline-block bg-red-500/20 text-red-500 border border-red-500/50 underline';
     } else if (actualCash > expected) {
         const excess = actualCash - expected;
-        diffBadge.innerText = 'Excess: Rs.' + excess;
+        diffBadge.innerText = 'Excess: ' + formatCurrency(excess);
         diffBadge.className = 'mt-2 text-xs font-bold px-2 py-1 rounded inline-block bg-emerald-500/20 text-emerald-400 border border-emerald-500/50';
     }
 }
@@ -1790,12 +1790,12 @@ async function loadPreviousBalances() {
             if (lastSale.shortageAmt > 0) {
                 cashLabel.innerText = "Unpaid Shortage";
                 cashLabel.className = "text-[10px] font-black uppercase text-red-400 tracking-widest";
-                cashValue.innerText = `Rs. ${lastSale.shortageAmt}`;
+                cashValue.innerText = formatCurrency(lastSale.shortageAmt);
                 cashValue.className = "text-base font-black text-red-500";
             } else {
                 cashLabel.innerText = "Excess Credit";
                 cashLabel.className = "text-[10px] font-black uppercase text-emerald-400 tracking-widest";
-                cashValue.innerText = `Rs. ${Math.abs(lastSale.shortageAmt)}`;
+                cashValue.innerText = formatCurrency(Math.abs(lastSale.shortageAmt));
                 cashValue.className = "text-base font-black text-emerald-400";
             }
         } else {
