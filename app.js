@@ -361,6 +361,27 @@ function getCurrentMonthString() {
     return getTodayString().slice(0, 7); // YYYY-MM
 }
 
+function calculateDynamicDaysLeft(targetMonthStr, workingDays) {
+    const today = new Date();
+    const [year, month] = targetMonthStr.split('-');
+    const targetDate = new Date(Number(year), Number(month) - 1, 1);
+    const currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    
+    if (targetDate < currentDate) return 1; 
+    if (targetDate > currentDate) return workingDays; 
+    
+    const currentDay = today.getDate();
+    const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
+    
+    // Proportional calculation: spreads the 'workingDays' evenly across the total calendar days of the month.
+    // This perfectly handles holidays (Sundays, Poya, etc.) since they are already subtracted from workingDays.
+    const passedRatio = (currentDay - 1) / daysInMonth;
+    const elapsedWorkingDays = Math.round(passedRatio * workingDays);
+    
+    let daysLeft = workingDays - elapsedWorkingDays;
+    return daysLeft < 1 ? 1 : daysLeft;
+}
+
 function formatCurrency(amount) {
     return 'Rs. ' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -605,9 +626,7 @@ async function updateDashboardCard() {
     const monthFaceValue = totalSales + totalMonthCommission;
 
     // 3. Compute Remaining Days & Dynamic Target
-    let uniqueWorkedDays = new Set(monthSales.map(r => r.date)).size;
-    let daysLeft = (workingDays || 25) - uniqueWorkedDays;
-    if (daysLeft < 1) daysLeft = 1; // At least today is left
+    let daysLeft = calculateDynamicDaysLeft(currentMonth, workingDays || 25);
 
     const remainingTarget = (monthlyTarget - totalSales) > 0 ? (monthlyTarget - totalSales) : 0;
     const todayTarget = remainingTarget / daysLeft;
@@ -639,6 +658,32 @@ async function updateDashboardCard() {
     if (progressBar) progressBar.style.width = perc + '%';
     if (progressText) progressText.innerText = perc.toFixed(1) + '% Completed';
     if (daysRem) daysRem.innerText = `${daysLeft} Working Days Left`;
+
+    // Calculate aggregate sums of all distributors for the Dashboard DMS Performance Summary Card
+    try {
+        const allStaff = await db.staff.toArray();
+        let sumMonthlyTarget = 0;
+        let sumDmsTarget = 0;
+        allStaff.forEach(s => {
+            sumMonthlyTarget += Number(s.target || 0);
+            sumDmsTarget += Number(s.dmsTarget || 0);
+        });
+        const sumDmsBalance = (sumMonthlyTarget - sumDmsTarget) > 0 ? (sumMonthlyTarget - sumDmsTarget) : 0;
+        const sumDmsDayTarget = daysLeft > 0 ? (sumDmsBalance / daysLeft) : sumDmsBalance;
+        const sumDmsProgress = sumMonthlyTarget > 0 ? (sumDmsTarget / sumMonthlyTarget * 100) : 0;
+
+        const dashDmsCard = document.getElementById('dashboard-dms-perf-card');
+        if (dashDmsCard) {
+            document.getElementById('dash-dms-target').innerText = formatCurrency(sumMonthlyTarget);
+            document.getElementById('dash-dms-achieved').innerText = formatCurrency(sumDmsTarget);
+            document.getElementById('dash-dms-balance-target').innerText = formatCurrency(sumDmsBalance);
+            document.getElementById('dash-dms-day-target').innerText = formatCurrency(sumDmsDayTarget);
+            document.getElementById('dash-dms-percent').innerText = `${sumDmsProgress.toFixed(1)}%`;
+            document.getElementById('dash-dms-bar').style.width = `${Math.min(sumDmsProgress, 100)}%`;
+        }
+    } catch (e) {
+        console.error('Error calculating dashboard DMS summary:', e);
+    }
 
     if (currentUser && currentUser.role === 'admin') {
         renderDistributorStats();
@@ -752,9 +797,7 @@ async function renderDistributorStats() {
         const target = staff.target || 0;
         const perc = target > 0 ? (totalS / target * 100) : 0;
 
-        const workedDays = new Set(staffMonthSales.map(r => r.date)).size;
-        let daysLeft = totalWokingDays - workedDays;
-        if (daysLeft < 1) daysLeft = 1;
+        let daysLeft = calculateDynamicDaysLeft(currentMonth, totalWokingDays);
         const remainingTarget = (target - totalS) > 0 ? (target - totalS) : 0;
         const dynamicDayTarget = remainingTarget / daysLeft;
         const balanceTarget = (target - totalS) > 0 ? (target - totalS) : 0;
@@ -1511,6 +1554,7 @@ function setupEventListeners() {
         const phone = document.getElementById('staff-phone').value;
         const password = document.getElementById('staff-password').value;
         const target = Number(document.getElementById('staff-target').value) || 0;
+        const dmsTarget = Number(document.getElementById('staff-dms-target').value) || 0;
         const joinedDate = document.getElementById('staff-joined').value;
 
         if (id !== '') {
@@ -1528,7 +1572,7 @@ function setupEventListeners() {
             const existingStaff = await db.staff.get(id);
             const targetUuid = existingStaff ? (existingStaff.uuid || id) : id;
 
-            await db.staff.update(id, { name, routeName, phone, password, target, joinedDate, syncStatus: 'pending' });
+            await db.staff.update(id, { name, routeName, phone, password, target, dmsTarget, joinedDate, syncStatus: 'pending' });
             showToast('Staff Updated');
             cancelStaffEdit();
 
@@ -1548,7 +1592,7 @@ function setupEventListeners() {
 
             // Add new staff
             const newId = await db.staff.add({
-                name, routeName, phone, password, target, joinedDate,
+                name, routeName, phone, password, target, dmsTarget, joinedDate,
                 syncStatus: 'pending'
             });
 
@@ -1568,6 +1612,7 @@ function setupEventListeners() {
 
         loadStaffDropdowns();
         renderStaffTable();
+        updateDashboardCard();
     });
 
     document.getElementById('target-form').addEventListener('submit', async (e) => {
@@ -1838,6 +1883,7 @@ window.deleteStaff = async function (strId) {
             loadStaffDropdowns();
             renderStaffTable();
             if (typeof renderDistributorStats === 'function') renderDistributorStats();
+            updateDashboardCard();
         } catch (error) {
             console.error("Deletion failed:", error);
             Swal.fire({
@@ -1918,6 +1964,7 @@ window.editStaff = async function (id) {
         document.getElementById('staff-phone').value = s.phone;
         document.getElementById('staff-password').value = s.password || '';
         document.getElementById('staff-target').value = s.target || '';
+        if(document.getElementById('staff-dms-target')) document.getElementById('staff-dms-target').value = s.dmsTarget || '';
 
         document.getElementById('staff-submit-btn').innerHTML = '<i class="fas fa-save mr-1"></i> Update';
         document.getElementById('staff-submit-btn').classList.replace('bg-indigo-600', 'bg-emerald-600');
@@ -2428,6 +2475,8 @@ async function updateStaffPerformanceDisplay(staffId) {
     if (!staffId) {
         const card = document.getElementById('staff-perf-card');
         if (card) card.classList.add('hidden');
+        const dmsCard = document.getElementById('staff-dms-perf-card');
+        if (dmsCard) dmsCard.classList.add('hidden');
         return;
     }
 
@@ -2458,16 +2507,19 @@ async function updateStaffPerformanceDisplay(staffId) {
         const settings = await db.settings.toCollection().first();
         const workingDays = settings ? (settings.workingDays || 25) : 25;
         const monthlyTarget = staff.target || 0;
+        const dmsTarget = staff.dmsTarget || 0;
 
         // Dynamic day target calculation
-        const workedDays = new Set(sales.map(r => r.date)).size;
-        let daysLeft = workingDays - workedDays;
-        if (daysLeft < 1) daysLeft = 1;
+        let daysLeft = calculateDynamicDaysLeft(currentMonth, workingDays);
 
         const remainingTarget = (monthlyTarget - monthAchieved) > 0 ? (monthlyTarget - monthAchieved) : 0;
         const dailyTarget = remainingTarget / daysLeft;
 
+        const remainingDmsTarget = (monthlyTarget - dmsTarget) > 0 ? (monthlyTarget - dmsTarget) : 0;
+        const dailyDmsTarget = remainingDmsTarget / daysLeft;
+
         const progress = monthlyTarget > 0 ? (monthAchieved / monthlyTarget * 100) : 0;
+        const dmsProgress = monthlyTarget > 0 ? (dmsTarget / monthlyTarget * 100) : 0;
 
         // Update UI
         const perfCard = document.getElementById('staff-perf-card');
@@ -2479,6 +2531,17 @@ async function updateStaffPerformanceDisplay(staffId) {
             document.getElementById('perf-achieved').innerText = formatCurrency(monthAchieved);
             document.getElementById('perf-percent').innerText = `${progress.toFixed(1)}%`;
             document.getElementById('perf-bar').style.width = `${Math.min(progress, 100)}%`;
+        }
+
+        const perfDmsCard = document.getElementById('staff-dms-perf-card');
+        if (perfDmsCard) {
+            perfDmsCard.classList.remove('hidden');
+            document.getElementById('perf-dms-target').innerText = formatCurrency(monthlyTarget);
+            document.getElementById('perf-dms-day-target').innerText = formatCurrency(dailyDmsTarget);
+            document.getElementById('perf-dms-balance-target').innerText = formatCurrency(remainingDmsTarget);
+            document.getElementById('perf-dms-achieved').innerText = formatCurrency(dmsTarget);
+            document.getElementById('perf-dms-percent').innerText = `${dmsProgress.toFixed(1)}%`;
+            document.getElementById('perf-dms-bar').style.width = `${Math.min(dmsProgress, 100)}%`;
         }
 
     } catch (err) {
@@ -2656,9 +2719,15 @@ async function pullFromCloud() {
             };
 
             if (staffRes.data) {
+                // Preserve local dmsTarget values since they aren't synced to cloud
+                const allLocalStaff = await db.staff.toArray();
+                const dmsMap = new Map(allLocalStaff.map(s => [String(s.phone), s.dmsTarget || 0]));
+
                 const mappedStaff = staffRes.data.map(s => ({
                     id: s.id, name: s.name, routeName: s.route_name, phone: s.phone,
-                    password: s.password, target: Number(s.target), joinedDate: s.joined_date, sysId: s.sys_id, syncStatus: 'synced'
+                    password: s.password, target: Number(s.target), 
+                    dmsTarget: dmsMap.get(String(s.phone)) || 0,
+                    joinedDate: s.joined_date, sysId: s.sys_id, syncStatus: 'synced'
                 }));
                 
                 await removeDeleted('staff', mappedStaff.map(r => r.id));
