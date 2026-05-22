@@ -82,7 +82,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const r = payload.new;
                     if (payload.table === 'staff') {
                         let existing = await db.staff.where('phone').equals(r.phone).first();
-                        let localDmsTarget = existing ? (existing.dmsTarget || 0) : 0;
                         
                         if (existing && existing.id !== r.id) {
                             // Fix ID mismatch (local created vs cloud generated)
@@ -99,7 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await db.staff.put({
                             id: r.id, name: r.name, routeName: r.route_name, phone: r.phone,
                             password: r.password, target: Number(r.target), 
-                            dmsTarget: localDmsTarget,
+                            dmsTarget: Number(r.dms_target) || 0,
                             joinedDate: r.joined_date, sysId: r.sys_id, syncStatus: 'synced'
                         });
                     } else if (payload.table === 'settings') {
@@ -269,7 +268,7 @@ async function pushPendingToCloud() {
     for (let s of pendingStaff) {
         const success = await syncToCloud('staff', {
             name: s.name, route_name: s.routeName, phone: s.phone, password: s.password, target: s.target,
-            joined_date: s.joinedDate, sys_id: s.sysId
+            dms_target: s.dmsTarget || 0, joined_date: s.joinedDate, sys_id: s.sysId
         }, { phone: s.phone });
         if (success) await db.staff.update(s.id, { syncStatus: 'synced' });
     }
@@ -1646,7 +1645,7 @@ function setupEventListeners() {
             const s = await db.staff.get(id);
             await syncToCloud('staff', {
                 name: s.name, route_name: s.routeName, phone: s.phone,
-                password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
+                password: s.password, target: s.target, dms_target: s.dmsTarget || 0, joined_date: s.joinedDate, sys_id: s.sysId
             }, { phone: s.phone });
         } else {
             // Check duplicate phone for NEW entry
@@ -1672,7 +1671,7 @@ function setupEventListeners() {
             const s = await db.staff.get(newId);
             await syncToCloud('staff', {
                 name: s.name, route_name: s.routeName, phone: s.phone,
-                password: s.password, target: s.target, joined_date: s.joinedDate, sys_id: s.sysId
+                password: s.password, target: s.target, dms_target: s.dmsTarget || 0, joined_date: s.joinedDate, sys_id: s.sysId
             }, { phone: s.phone });
         }
 
@@ -2785,14 +2784,10 @@ async function pullFromCloud() {
             };
 
             if (staffRes.data) {
-                // Preserve local dmsTarget values since they aren't synced to cloud
-                const allLocalStaff = await db.staff.toArray();
-                const dmsMap = new Map(allLocalStaff.map(s => [String(s.phone), s.dmsTarget || 0]));
-
                 const mappedStaff = staffRes.data.map(s => ({
                     id: s.id, name: s.name, routeName: s.route_name, phone: s.phone,
                     password: s.password, target: Number(s.target), 
-                    dmsTarget: dmsMap.get(String(s.phone)) || 0,
+                    dmsTarget: Number(s.dms_target) || 0,
                     joinedDate: s.joined_date, sysId: s.sys_id, syncStatus: 'synced'
                 }));
                 
