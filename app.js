@@ -68,8 +68,74 @@ document.addEventListener('DOMContentLoaded', async () => {
         const handleCloudChange = async (payload) => {
             console.log("Cloud change detected:", payload.eventType, payload.table);
             
-            // Wait for the new data to be pulled and saved locally
-            await pullFromCloud();
+            try {
+                // Ensure DB is open
+                if (!db.isOpen()) await db.open();
+
+                if (payload.eventType === 'DELETE') {
+                    const oldId = payload.old.id;
+                    if (payload.table === 'staff') await db.staff.delete(oldId);
+                    else if (payload.table === 'settings') await db.settings.delete(oldId);
+                    else if (payload.table === 'daily_issues') await db.dailyIssues.delete(oldId);
+                    else if (payload.table === 'daily_sales') await db.dailySales.delete(oldId);
+                } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                    const r = payload.new;
+                    if (payload.table === 'staff') {
+                        let existing = await db.staff.where('phone').equals(r.phone).first();
+                        let localDmsTarget = existing ? (existing.dmsTarget || 0) : 0;
+                        
+                        if (existing && existing.id !== r.id) {
+                            // Fix ID mismatch (local created vs cloud generated)
+                            await db.dailyIssues.where('staffId').equals(existing.id).modify({ staffId: r.id });
+                            await db.dailySales.where('staffId').equals(existing.id).modify({ staffId: r.id });
+                            await db.staff.delete(existing.id);
+                            
+                            if (currentUser && currentUser.id === existing.id) {
+                                currentUser.id = r.id;
+                                localStorage.setItem('crdms_user', JSON.stringify(currentUser));
+                            }
+                        }
+                        
+                        await db.staff.put({
+                            id: r.id, name: r.name, routeName: r.route_name, phone: r.phone,
+                            password: r.password, target: Number(r.target), 
+                            dmsTarget: localDmsTarget,
+                            joinedDate: r.joined_date, sysId: r.sys_id, syncStatus: 'synced'
+                        });
+                    } else if (payload.table === 'settings') {
+                        await db.settings.put({
+                            id: r.id, targetAmount: r.target_amount, workingDays: r.working_days,
+                            adminPassword: r.admin_password, lastBackupDate: r.last_backup_date,
+                            adminPhoto: r.admin_photo
+                        });
+                    } else if (payload.table === 'daily_issues') {
+                        const ex = await db.dailyIssues.where('[date+staffId]').equals([r.date, r.staff_id]).first();
+                        if (ex && ex.id !== r.id) await db.dailyIssues.delete(ex.id);
+                        
+                        await db.dailyIssues.put({
+                            id: r.id, staffId: r.staff_id, date: r.date,
+                            card48: r.card48, card95: r.card95, card96: r.card96,
+                            reloadCash: Number(r.reload_cash), totalIssuedValue: Number(r.total_issued_value),
+                            syncStatus: 'synced'
+                        });
+                    } else if (payload.table === 'daily_sales') {
+                        const ex = await db.dailySales.where('[date+staffId]').equals([r.date, r.staff_id]).first();
+                        if (ex && ex.id !== r.id) await db.dailySales.delete(ex.id);
+                        
+                        await db.dailySales.put({
+                            id: r.id, staffId: r.staff_id, date: r.date,
+                            soldCard48: r.sold_card48, soldCard95: r.sold_card95, soldCard96: r.sold_card96,
+                            soldReloadCash: Number(r.sold_reload_cash), handCash: Number(r.hand_cash),
+                            totalCommission: Number(r.total_commission), shortageAmt: Number(r.shortage_amt),
+                            returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
+                            availReload: r.avail_reload, syncStatus: 'synced'
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error("Targeted sync error, falling back to full pull:", e);
+                await pullFromCloud();
+            }
             
             // Auto-refresh the UI if a user is currently logged in
             if (currentUser) {
