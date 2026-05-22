@@ -1643,10 +1643,13 @@ function setupEventListeners() {
 
             // Sync specific updated staff
             const s = await db.staff.get(id);
-            await syncToCloud('staff', {
+            const success = await syncToCloud('staff', {
                 name: s.name, route_name: s.routeName, phone: s.phone,
                 password: s.password, target: s.target, dms_target: s.dmsTarget || 0, joined_date: s.joinedDate, sys_id: s.sysId
             }, { phone: s.phone });
+            if (success) {
+                await db.staff.update(id, { syncStatus: 'synced' });
+            }
         } else {
             // Check duplicate phone for NEW entry
             let exists = await db.staff.where('phone').equals(phone).first();
@@ -1669,10 +1672,13 @@ function setupEventListeners() {
             showToast('Staff Added');
 
             const s = await db.staff.get(newId);
-            await syncToCloud('staff', {
+            const success = await syncToCloud('staff', {
                 name: s.name, route_name: s.routeName, phone: s.phone,
                 password: s.password, target: s.target, dms_target: s.dmsTarget || 0, joined_date: s.joinedDate, sys_id: s.sysId
             }, { phone: s.phone });
+            if (success) {
+                await db.staff.update(newId, { syncStatus: 'synced' });
+            }
         }
 
         loadStaffDropdowns();
