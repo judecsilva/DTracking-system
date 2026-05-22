@@ -1,10 +1,11 @@
 // --- Database Configuration (Dexie) ---
 const db = new Dexie("DistributionDB");
-db.version(4).stores({
+db.version(5).stores({
     settings: '++id, targetAmount, adminPassword',
     staff: '++id, name, routeName, phone, password, syncStatus',
     dailyIssues: '++id, staffId, date, syncStatus, [date+staffId]',
-    dailySales: '++id, staffId, date, syncStatus, [date+staffId]'
+    dailySales: '++id, staffId, date, syncStatus, [date+staffId]',
+    dmsHistory: '++id, staffId, date, syncStatus, [date+staffId]'
 });
 
 
@@ -78,6 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     else if (payload.table === 'settings') await db.settings.delete(oldId);
                     else if (payload.table === 'daily_issues') await db.dailyIssues.delete(oldId);
                     else if (payload.table === 'daily_sales') await db.dailySales.delete(oldId);
+                    else if (payload.table === 'dms_history') await db.dmsHistory.delete(oldId);
                 } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                     const r = payload.new;
                     if (payload.table === 'staff') {
@@ -129,6 +131,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                             returnedCard48: r.returned_card48, returnedCard95: r.returned_card95, returnedCard96: r.returned_card96,
                             availReload: r.avail_reload, syncStatus: 'synced'
                         });
+                    } else if (payload.table === 'dms_history') {
+                        const ex = await db.dmsHistory.where('[date+staffId]').equals([r.date, r.staff_id]).first();
+                        if (ex && ex.id !== r.id) await db.dmsHistory.delete(ex.id);
+                        
+                        await db.dmsHistory.put({
+                            id: r.id, staffId: r.staff_id, date: r.date,
+                            amount: Number(r.amount), syncStatus: 'synced'
+                        });
                     }
                 }
             } catch (e) {
@@ -177,6 +187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, handleCloudChange)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_sales' }, handleCloudChange)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_issues' }, handleCloudChange)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'dms_history' }, handleCloudChange)
             .subscribe();
     }
 
@@ -295,6 +306,17 @@ async function pushPendingToCloud() {
             avail_reload: r.availReload
         }, { staff_id: r.staffId, date: r.date });
         if (success) await db.dailySales.update(r.id, { syncStatus: 'synced' });
+    }
+
+    // Push DMS History
+    const pendingDmsHistory = await db.dmsHistory.where('syncStatus').equals('pending').toArray();
+    for (let r of pendingDmsHistory) {
+        const success = await syncToCloud('dms_history', {
+            staff_id: r.staffId,
+            date: r.date,
+            amount: r.amount
+        }, { staff_id: r.staffId, date: r.date });
+        if (success) await db.dmsHistory.update(r.id, { syncStatus: 'synced' });
     }
     updateSyncStatusIndicator();
 }
@@ -1637,7 +1659,28 @@ function setupEventListeners() {
             const existingStaff = await db.staff.get(id);
             const targetUuid = existingStaff ? (existingStaff.uuid || id) : id;
 
+            const oldDmsTarget = existingStaff ? (existingStaff.dmsTarget || 0) : 0;
+            const newDmsTarget = Number(dmsTarget) || 0;
+
             await db.staff.update(id, { name, routeName, phone, password, target, dmsTarget, joinedDate, syncStatus: 'pending' });
+
+            if (newDmsTarget !== oldDmsTarget) {
+                const today = getTodayString();
+                const existingDms = await db.dmsHistory.where('[date+staffId]').equals([today, id]).first();
+                const dmsLog = {
+                    staffId: id,
+                    date: today,
+                    amount: newDmsTarget,
+                    syncStatus: 'pending'
+                };
+                if (existingDms) {
+                    dmsLog.id = existingDms.id;
+                    await db.dmsHistory.put(dmsLog);
+                } else {
+                    await db.dmsHistory.add(dmsLog);
+                }
+            }
+
             showToast('Staff Updated');
             cancelStaffEdit();
 
@@ -1667,6 +1710,17 @@ function setupEventListeners() {
             // Generate sysId based on unique auto-incrementing ID
             const sysId = 'DS-' + String(newId).padStart(4, '0');
             await db.staff.update(newId, { sysId });
+
+            const newDmsTarget = Number(dmsTarget) || 0;
+            if (newDmsTarget > 0) {
+                const today = getTodayString();
+                await db.dmsHistory.add({
+                    staffId: newId,
+                    date: today,
+                    amount: newDmsTarget,
+                    syncStatus: 'pending'
+                });
+            }
 
             document.getElementById('staff-form').reset();
             showToast('Staff Added');
@@ -2456,8 +2510,39 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
     });
 
     const avgDaily = records.length > 0 ? (totalSales / records.length) : 0;
-    const staff = await db.staff.get(staffId);
+    
+    // Fetch staff with type compatibility
+    let staff = await db.staff.get(staffId);
+    if (!staff && !isNaN(staffId)) {
+        staff = await db.staff.get(Number(staffId));
+    }
+    if (!staff) {
+        staff = { name: 'Unknown', target: 0, dmsTarget: 0 };
+    }
+    
     const progress = (staff.target || 0) > 0 ? (totalSales / staff.target * 100) : 0;
+
+    // DMS calculations
+    const settings = await db.settings.toCollection().first();
+    const workingDays = settings ? (settings.workingDays || 25) : 25;
+    const daysLeft = calculateDynamicDaysLeft(monthStr, workingDays);
+    const monthlyTarget = staff.target || 0;
+    const dmsTarget = staff.dmsTarget || 0;
+    const remainingDmsTarget = (monthlyTarget - dmsTarget) > 0 ? (monthlyTarget - dmsTarget) : 0;
+    const dmsProgress = monthlyTarget > 0 ? (dmsTarget / monthlyTarget * 100) : 0;
+    const dailyDmsTarget = daysLeft > 0 ? (remainingDmsTarget / daysLeft) : remainingDmsTarget;
+
+    // Fetch DMS history records for this staff and month
+    let dmsHistoryRecords = await db.dmsHistory.where('staffId').equals(staffId).toArray();
+    if (!isNaN(staffId)) {
+        const numDmsRecords = await db.dmsHistory.where('staffId').equals(Number(staffId)).toArray();
+        const seenDmsIds = new Set(dmsHistoryRecords.map(r => r.id));
+        numDmsRecords.forEach(r => {
+            if (!seenDmsIds.has(r.id)) dmsHistoryRecords.push(r);
+        });
+    }
+    dmsHistoryRecords = dmsHistoryRecords.filter(r => r.date.startsWith(monthStr));
+    dmsHistoryRecords.sort((a, b) => a.date.localeCompare(b.date));
 
     let html = `
         <!-- Professional Scorecard Header -->
@@ -2478,6 +2563,33 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
                 <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Sales Statistics</p>
                 <p class="text-[10px] font-bold text-slate-700">Daily Avg: ${formatCurrency(avgDaily)}</p>
                 <p class="text-[10px] font-bold text-indigo-500">Best: ${formatCurrency(bestDay.val)}</p>
+            </div>
+        </div>
+
+        <!-- DMS Performance Scorecard -->
+        <div class="mb-6 border-t border-slate-200 pt-6">
+            <h3 class="text-xs font-black text-indigo-900 uppercase tracking-widest mb-3 flex items-center">
+                <svg class="h-4 w-4 mr-1 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2" />
+                </svg>
+                DMS Performance Scorecard
+            </h3>
+            <div class="grid grid-cols-3 gap-4">
+                <div class="p-3 border border-slate-200 rounded bg-slate-50/50">
+                    <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">DMS Achieved / Target</p>
+                    <p class="text-base font-black text-indigo-900">${formatCurrency(dmsTarget)} <span class="text-[10px] font-bold text-slate-400">/ ${formatCurrency(monthlyTarget)}</span></p>
+                    <p class="text-[9px] text-indigo-600 font-bold mt-1">${dmsProgress.toFixed(1)}% Completed</p>
+                </div>
+                <div class="p-3 border border-slate-200 rounded bg-slate-50/50">
+                    <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Remaining DMS Target</p>
+                    <p class="text-base font-black text-rose-700">${formatCurrency(remainingDmsTarget)}</p>
+                    <p class="text-[9px] text-slate-500 mt-1">${daysLeft} Working Days Left</p>
+                </div>
+                <div class="p-3 border border-slate-200 rounded bg-slate-50/50">
+                    <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Daily Target to Cover</p>
+                    <p class="text-base font-black text-emerald-700">${formatCurrency(dailyDmsTarget)}</p>
+                    <p class="text-[9px] text-slate-500 mt-1">Required daily DMS sale</p>
+                </div>
             </div>
         </div>
 
@@ -2538,6 +2650,49 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
                 </tr>
             </tfoot>
         </table>
+
+        <!-- DMS Sale Update History Timeline -->
+        <div class="mt-8 border-t border-slate-200 pt-6">
+            <h3 class="text-xs font-black text-indigo-900 uppercase tracking-widest mb-3 flex items-center">
+                <svg class="h-4 w-4 mr-1 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                DMS Sale Update History (Timeline)
+            </h3>
+            
+            ${dmsHistoryRecords.length === 0 ? `
+                <div class="p-4 border border-dashed border-slate-200 rounded text-center text-slate-400 text-[10px]">
+                    No sporadic DMS Sale updates recorded for this month.
+                </div>
+            ` : `
+                <table class="w-full text-[10px] border-collapse">
+                    <thead>
+                        <tr class="bg-slate-800 text-white border-b border-slate-700">
+                            <th class="py-2.5 px-2 text-left">Update Date</th>
+                            <th class="py-2.5 px-2 text-center">New DMS Sale Amount</th>
+                            <th class="py-2.5 px-2 text-center">Target at Update</th>
+                            <th class="py-2.5 px-2 text-center">Achievement %</th>
+                            <th class="py-2.5 px-2 text-right">Remaining DMS Target</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${dmsHistoryRecords.map(r => {
+                            const pct = monthlyTarget > 0 ? (r.amount / monthlyTarget * 100) : 0;
+                            const remaining = (monthlyTarget - r.amount) > 0 ? (monthlyTarget - r.amount) : 0;
+                            return `
+                                <tr class="border-b border-slate-100 hover:bg-slate-50/40">
+                                    <td class="py-2 px-2 font-bold text-slate-700">${r.date}</td>
+                                    <td class="py-2 px-2 text-center font-bold text-indigo-700 font-mono">${formatCurrency(r.amount)}</td>
+                                    <td class="py-2 px-2 text-center text-slate-500 font-mono">${formatCurrency(monthlyTarget)}</td>
+                                    <td class="py-2 px-2 text-center font-bold text-emerald-600 font-mono">${pct.toFixed(1)}%</td>
+                                    <td class="py-2 px-2 text-right text-rose-600 font-bold font-mono">${formatCurrency(remaining)}</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `}
+        </div>
     `;
     container.innerHTML = html;
 }
@@ -2762,11 +2917,12 @@ async function pullFromCloud() {
             if (loginSubtext) loginSubtext.innerText = "Fetching latest records...";
 
             // 2. Pull
-            const [sRes, staffRes, issueRes, salesRes] = await Promise.all([
+            const [sRes, staffRes, issueRes, salesRes, dmsRes] = await Promise.all([
                 supabaseClient.from('settings').select('*'),
                 supabaseClient.from('staff').select('*'),
                 supabaseClient.from('daily_issues').select('*'),
-                supabaseClient.from('daily_sales').select('*')
+                supabaseClient.from('daily_sales').select('*'),
+                supabaseClient.from('dms_history').select('*')
             ]);
 
             if (staffRes.error) throw staffRes.error;
@@ -2861,6 +3017,21 @@ async function pullFromCloud() {
                     if (ex && ex.id !== r.id) await db.dailySales.delete(ex.id);
                 }
                 await db.dailySales.bulkPut(mapped);
+            }
+
+            if (dmsRes && dmsRes.data) {
+                const mapped = dmsRes.data.map(r => ({
+                    id: r.id, staffId: r.staff_id, date: r.date,
+                    amount: Number(r.amount), syncStatus: 'synced'
+                }));
+                
+                await removeDeleted('dmsHistory', mapped.map(r => r.id));
+                
+                for (const r of mapped) {
+                    const ex = await db.dmsHistory.where('[date+staffId]').equals([r.date, r.staffId]).first();
+                    if (ex && ex.id !== r.id) await db.dmsHistory.delete(ex.id);
+                }
+                await db.dmsHistory.bulkPut(mapped);
             }
         })();
 
