@@ -13,10 +13,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
 
     <!-- Offline-First Libraries -->
-    <script src="lib/dexie.js"></script>
-    <script src="lib/tailwind.js"></script>
-    <script src="lib/sweetalert2.js"></script>
-    <script src="lib/chart.js"></script>
+    <script src="lib/dexie.js" defer></script>
+    <script src="lib/tailwind.js" defer></script>
+    <script src="lib/sweetalert2.js" defer></script>
+    <script src="lib/chart.js" defer></script>
 
     <!-- Icons (Requires internet for first load, then cached by SW) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -290,7 +290,6 @@
             }
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body class="min-h-screen relative bg-gradient-radial">
@@ -1842,26 +1841,9 @@
         </div> <!-- End app-content -->
 
         <!-- API & App Logic Scripts -->
-        <script src="lib/supabase.js"></script>
-        <script>
+        <script src="lib/supabase.js" defer></script>
 
-            console.log("Initializing Supabase...");
-            const SUPABASE_URL = "https://ayshfnqysfisfxlsgjwa.supabase.co";
-            const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5c2hmbnF5c2Zpc2Z4bHNnandhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjYyNDUsImV4cCI6MjA5MTM0MjI0NX0.Lu4h2TlPoDJOdheg1BarRHp9WWDSTNe0hNgZf6oJvfc";
-
-            let supabaseClient;
-            try {
-                if (typeof supabase === 'undefined') {
-                    console.error("Supabase Library Not Loaded");
-                } else {
-                    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-                    console.log("Supabase Client Ready");
-                }
-            } catch (err) {
-                console.error("Supabase Init Error:", err);
-            }
-        </script>
-        <script src="app.js?v=3.3"></script>
+        <script src="app.js?v=3.4" defer></script>
         <script>
             // EMERGENCY RECOVERY SCRIPT (Works even if app.js fails)
             async function forceAppUpdate() {

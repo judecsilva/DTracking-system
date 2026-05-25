@@ -1,3 +1,20 @@
+// --- Supabase Initialization ---
+console.log("Initializing Supabase...");
+const SUPABASE_URL = "https://ayshfnqysfisfxlsgjwa.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF5c2hmbnF5c2Zpc2Z4bHNnandhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NjYyNDUsImV4cCI6MjA5MTM0MjI0NX0.Lu4h2TlPoDJOdheg1BarRHp9WWDSTNe0hNgZf6oJvfc";
+
+let supabaseClient;
+try {
+    if (typeof supabase === 'undefined') {
+        console.error("Supabase Library Not Loaded");
+    } else {
+        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        console.log("Supabase Client Ready");
+    }
+} catch (err) {
+    console.error("Supabase Init Error:", err);
+}
+
 // --- Database Configuration (Dexie) ---
 const db = new Dexie("DistributionDB");
 db.version(5).stores({
@@ -57,7 +74,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Pull data from Cloud on startup ---
     // We pull even if not logged in so the distributor/staff list is available for login on new devices
-    pullFromCloud();
+    // Delay slightly to allow UI to render first
+    setTimeout(() => {
+        pullFromCloud();
+    }, 800);
 
     // Sync when user comes back to the app tab (optional but recommended)
     window.addEventListener('focus', () => {
