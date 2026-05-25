@@ -490,7 +490,8 @@ function calculateDynamicDaysLeft(targetMonthStr, workingDays) {
 }
 
 function formatCurrency(amount) {
-    return 'Rs. ' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // Mathematically exact values are passed here, but we round them for display only as requested (e.g. 100.50 -> 101.00)
+    return 'Rs. ' + Math.round(Number(amount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatNoDecimals(amount) {
@@ -1429,10 +1430,10 @@ function calculateExpectedCash() {
     const todayExpected = totalCardsValue + sReload;
     const expected = todayExpected + previousShortage;
 
-    // Update UI
-    document.getElementById('val-c48').innerText = cardVal48.toFixed(2);
-    document.getElementById('val-c95').innerText = cardVal95.toFixed(2);
-    document.getElementById('val-c96').innerText = cardVal96.toFixed(2);
+    // Update UI (Round for display)
+    document.getElementById('val-c48').innerText = Math.round(cardVal48).toFixed(2);
+    document.getElementById('val-c95').innerText = Math.round(cardVal95).toFixed(2);
+    document.getElementById('val-c96').innerText = Math.round(cardVal96).toFixed(2);
     document.getElementById('coll-total-card-val').innerText = formatCurrency(totalCardsValue);
 
     document.getElementById('coll-card-comm').innerText = formatNoDecimals(commCard);
