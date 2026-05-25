@@ -17,12 +17,13 @@ try {
 
 // --- Database Configuration (Dexie) ---
 const db = new Dexie("DistributionDB");
-db.version(5).stores({
+db.version(6).stores({
     settings: '++id, targetAmount, adminPassword',
     staff: '++id, name, routeName, phone, password, syncStatus',
     dailyIssues: '++id, staffId, date, syncStatus, [date+staffId]',
     dailySales: '++id, staffId, date, syncStatus, [date+staffId]',
-    dmsHistory: '++id, staffId, date, syncStatus, [date+staffId]'
+    dmsHistory: '++id, staffId, date, syncStatus, [date+staffId]',
+    monthlyTargets: '++id, month, type, entityId, amount, syncStatus, [month+type+entityId]'
 });
 
 
@@ -100,6 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     else if (payload.table === 'daily_issues') await db.dailyIssues.delete(oldId);
                     else if (payload.table === 'daily_sales') await db.dailySales.delete(oldId);
                     else if (payload.table === 'dms_history') await db.dmsHistory.delete(oldId);
+                    else if (payload.table === 'monthly_targets') await db.monthlyTargets.delete(oldId);
                 } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                     const r = payload.new;
                     if (payload.table === 'staff') {
@@ -157,6 +159,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         
                         await db.dmsHistory.put({
                             id: r.id, staffId: r.staff_id, date: r.date,
+                            amount: Number(r.amount), syncStatus: 'synced'
+                        });
+                    } else if (payload.table === 'monthly_targets') {
+                        const ex = await db.monthlyTargets.where('[month+type+entityId]').equals([r.month, r.type, r.entity_id]).first();
+                        if (ex && ex.id !== r.id) await db.monthlyTargets.delete(ex.id);
+                        
+                        await db.monthlyTargets.put({
+                            id: r.id, month: r.month, type: r.type, entityId: r.entity_id,
                             amount: Number(r.amount), syncStatus: 'synced'
                         });
                     }
@@ -338,6 +348,18 @@ async function pushPendingToCloud() {
         }, { staff_id: r.staffId, date: r.date });
         if (success) await db.dmsHistory.update(r.id, { syncStatus: 'synced' });
     }
+
+    // Push Monthly Targets
+    const pendingMonthlyTargets = await db.monthlyTargets.where('syncStatus').equals('pending').toArray();
+    for (let r of pendingMonthlyTargets) {
+        const success = await syncToCloud('monthly_targets', {
+            month: r.month,
+            type: r.type,
+            entity_id: r.entityId,
+            amount: r.amount
+        }, { month: r.month, type: r.type, entity_id: r.entityId });
+        if (success) await db.monthlyTargets.update(r.id, { syncStatus: 'synced' });
+    }
     updateSyncStatusIndicator();
 }
 
@@ -487,6 +509,14 @@ function calculateDynamicDaysLeft(targetMonthStr, workingDays) {
     
     let daysLeft = workingDays - elapsedWorkingDays;
     return daysLeft < 1 ? 1 : daysLeft;
+}
+
+async function getHistoricalTarget(monthStr, type, entityId, fallbackTarget) {
+    const record = await db.monthlyTargets.where('[month+type+entityId]').equals([monthStr, type, entityId]).first();
+    if (record && typeof record.amount !== 'undefined') {
+        return record.amount;
+    }
+    return fallbackTarget;
 }
 
 function formatCurrency(amount) {
@@ -699,7 +729,8 @@ async function updateDashboardCard() {
     if (currentUser && currentUser.role === 'distributor') {
         // Distributor Stats
         const staff = await db.staff.get(currentUser.id);
-        monthlyTarget = staff ? staff.target : 0;
+        const fallbackTarget = staff ? staff.target : 0;
+        monthlyTarget = await getHistoricalTarget(currentMonth, 'staff', currentUser.id, fallbackTarget);
 
         monthSales = await db.dailySales
             .where('staffId').equals(currentUser.id)
@@ -713,7 +744,9 @@ async function updateDashboardCard() {
         document.getElementById('display-user-role').innerText = 'DISTRIBUTOR (' + (staff ? staff.routeName : '') + ')';
     } else {
         // Global Admin Stats
-        monthlyTarget = targetSetting ? targetSetting.targetAmount : 0;
+        const fallbackTarget = targetSetting ? targetSetting.targetAmount : 0;
+        monthlyTarget = await getHistoricalTarget(currentMonth, 'global', 1, fallbackTarget);
+        
         monthSales = await db.dailySales
             .where('date').startsWith(currentMonth)
             .toArray();
@@ -1652,6 +1685,19 @@ function setupEventListeners() {
     });
 
 
+    // --- Monthly Target History Helper ---
+    async function saveMonthlyTarget(type, entityId, amount) {
+        const currentMonth = getCurrentMonthString();
+        const existing = await db.monthlyTargets.where('[month+type+entityId]').equals([currentMonth, type, entityId]).first();
+        if (existing) {
+            if (existing.amount !== amount) {
+                await db.monthlyTargets.update(existing.id, { amount, syncStatus: 'pending' });
+            }
+        } else {
+            await db.monthlyTargets.add({ month: currentMonth, type, entityId, amount, syncStatus: 'pending' });
+        }
+    }
+
     // Sets & Target
     document.getElementById('staff-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -1705,6 +1751,8 @@ function setupEventListeners() {
             showToast('Staff Updated');
             cancelStaffEdit();
 
+            await saveMonthlyTarget('staff', id, target);
+
             // Sync specific updated staff
             const s = await db.staff.get(id);
             const success = await syncToCloud('staff', {
@@ -1743,6 +1791,8 @@ function setupEventListeners() {
                 });
             }
 
+            await saveMonthlyTarget('staff', newId, target);
+
             document.getElementById('staff-form').reset();
             showToast('Staff Added');
 
@@ -1775,6 +1825,8 @@ function setupEventListeners() {
         }
         showToast('Settings Updated');
         updateDashboardCard();
+
+        await saveMonthlyTarget('global', 1, targetAmount);
 
         // --- Online Sync Settings ---
         syncToCloud('settings', {
@@ -2541,13 +2593,15 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
         staff = { name: 'Unknown', target: 0, dmsTarget: 0 };
     }
     
-    const progress = (staff.target || 0) > 0 ? (totalSales / staff.target * 100) : 0;
+    const fallbackTarget = staff.target || 0;
+    const monthlyTarget = await getHistoricalTarget(monthStr, 'staff', staff.id, fallbackTarget);
+
+    const progress = monthlyTarget > 0 ? (totalSales / monthlyTarget * 100) : 0;
 
     // DMS calculations
     const settings = await db.settings.toCollection().first();
     const workingDays = settings ? (settings.workingDays || 25) : 25;
     const daysLeft = calculateDynamicDaysLeft(monthStr, workingDays);
-    const monthlyTarget = staff.target || 0;
     const dmsTarget = staff.dmsTarget || 0;
     const remainingDmsTarget = (monthlyTarget - dmsTarget) > 0 ? (monthlyTarget - dmsTarget) : 0;
     const dmsProgress = monthlyTarget > 0 ? (dmsTarget / monthlyTarget * 100) : 0;
@@ -2753,7 +2807,8 @@ async function updateStaffPerformanceDisplay(staffId) {
 
         const settings = await db.settings.toCollection().first();
         const workingDays = settings ? (settings.workingDays || 25) : 25;
-        const monthlyTarget = staff.target || 0;
+        const fallbackTarget = staff.target || 0;
+        const monthlyTarget = await getHistoricalTarget(currentMonth, 'staff', staff.id, fallbackTarget);
         const dmsTarget = staff.dmsTarget || 0;
 
         // Dynamic day target calculation
@@ -2938,12 +2993,13 @@ async function pullFromCloud() {
             if (loginSubtext) loginSubtext.innerText = "Fetching latest records...";
 
             // 2. Pull
-            const [sRes, staffRes, issueRes, salesRes, dmsRes] = await Promise.all([
+            const [sRes, staffRes, issueRes, salesRes, dmsRes, monthlyTargetsRes] = await Promise.all([
                 supabaseClient.from('settings').select('*'),
                 supabaseClient.from('staff').select('*'),
                 supabaseClient.from('daily_issues').select('*'),
                 supabaseClient.from('daily_sales').select('*'),
-                supabaseClient.from('dms_history').select('*')
+                supabaseClient.from('dms_history').select('*'),
+                supabaseClient.from('monthly_targets').select('*')
             ]);
 
             if (staffRes.error) throw staffRes.error;
@@ -3053,6 +3109,21 @@ async function pullFromCloud() {
                     if (ex && ex.id !== r.id) await db.dmsHistory.delete(ex.id);
                 }
                 await db.dmsHistory.bulkPut(mapped);
+            }
+
+            if (monthlyTargetsRes && monthlyTargetsRes.data) {
+                const mapped = monthlyTargetsRes.data.map(r => ({
+                    id: r.id, month: r.month, type: r.type, entityId: r.entity_id,
+                    amount: Number(r.amount), syncStatus: 'synced'
+                }));
+                
+                await removeDeleted('monthlyTargets', mapped.map(r => r.id));
+                
+                for (const r of mapped) {
+                    const ex = await db.monthlyTargets.where('[month+type+entityId]').equals([r.month, r.type, r.entityId]).first();
+                    if (ex && ex.id !== r.id) await db.monthlyTargets.delete(ex.id);
+                }
+                await db.monthlyTargets.bulkPut(mapped);
             }
         })();
 
