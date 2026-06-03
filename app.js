@@ -352,12 +352,17 @@ async function pushPendingToCloud() {
     // Push Monthly Targets
     const pendingMonthlyTargets = await db.monthlyTargets.where('syncStatus').equals('pending').toArray();
     for (let r of pendingMonthlyTargets) {
-        const success = await syncToCloud('monthly_targets', {
+        const payload = {
             month: r.month,
             type: r.type,
             entity_id: r.entityId,
             amount: r.amount
-        }, { month: r.month, type: r.type, entity_id: r.entityId });
+        };
+        if (r.workingDays !== undefined) {
+            payload.working_days = r.workingDays;
+        }
+        
+        const success = await syncToCloud('monthly_targets', payload, { month: r.month, type: r.type, entity_id: r.entityId });
         if (success) await db.monthlyTargets.update(r.id, { syncStatus: 'synced' });
     }
     updateSyncStatusIndicator();
@@ -496,7 +501,7 @@ function calculateDynamicDaysLeft(targetMonthStr, workingDays) {
     const targetDate = new Date(Number(year), Number(month) - 1, 1);
     const currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
     
-    if (targetDate < currentDate) return 1; 
+    if (targetDate < currentDate) return 0; 
     if (targetDate > currentDate) return workingDays; 
     
     const currentDay = today.getDate();
@@ -508,7 +513,7 @@ function calculateDynamicDaysLeft(targetMonthStr, workingDays) {
     const elapsedWorkingDays = Math.round(passedRatio * workingDays);
     
     let daysLeft = workingDays - elapsedWorkingDays;
-    return daysLeft < 1 ? 1 : daysLeft;
+    return daysLeft < 0 ? 0 : daysLeft;
 }
 
 async function getHistoricalTarget(monthStr, type, entityId, fallbackTarget) {
@@ -516,7 +521,53 @@ async function getHistoricalTarget(monthStr, type, entityId, fallbackTarget) {
     if (record && typeof record.amount !== 'undefined') {
         return record.amount;
     }
+    const currentMonthStr = getCurrentMonthString();
+    if (type === 'staff' && monthStr >= currentMonthStr) {
+        return 0; // Reset to 0 for a new/current month if no specific record is found
+    }
     return fallbackTarget;
+}
+
+async function getHistoricalDmsTarget(monthStr, staffId) {
+    let dmsRecords = await db.dmsHistory.where('staffId').equals(staffId).toArray();
+    if (!isNaN(staffId)) {
+        const numDmsRecords = await db.dmsHistory.where('staffId').equals(Number(staffId)).toArray();
+        const seen = new Set(dmsRecords.map(r => r.id));
+        numDmsRecords.forEach(r => { if (!seen.has(r.id)) dmsRecords.push(r); });
+    }
+    
+    const currentMonthStr = getCurrentMonthString();
+    
+    if (monthStr >= currentMonthStr) {
+        const filteredDms = dmsRecords.filter(r => r.date.startsWith(monthStr));
+        filteredDms.sort((a, b) => b.date.localeCompare(a.date)); // descending
+        if (filteredDms && filteredDms.length > 0) {
+            return Number(filteredDms[0].amount);
+        }
+        return 0; 
+    } else {
+        const endOfMonth = monthStr + '-31'; 
+        const filteredDms = dmsRecords.filter(r => r.date <= endOfMonth);
+        filteredDms.sort((a, b) => b.date.localeCompare(a.date)); // descending
+        if (filteredDms && filteredDms.length > 0) {
+            return Number(filteredDms[0].amount);
+        }
+        // Fallback if absolutely no history exists before that month
+        const staff = await db.staff.get(staffId) || await db.staff.get(Number(staffId));
+        return staff ? (staff.dmsTarget || 0) : 0;
+    }
+}
+
+async function getHistoricalWorkingDays(monthStr, fallbackDays) {
+    const record = await db.monthlyTargets.where('[month+type+entityId]').equals([monthStr, 'global', 1]).first();
+    if (record && typeof record.workingDays !== 'undefined' && record.workingDays !== null) {
+        return record.workingDays;
+    }
+    // If no specific record exists for a past month, fall back to 25 instead of using the new month's value.
+    if (monthStr < getCurrentMonthString()) {
+        return 25;
+    }
+    return fallbackDays;
 }
 
 function formatCurrency(amount) {
@@ -714,15 +765,18 @@ window.printDashboard = function() {
 // --- Dashboard Logic ---
 async function updateDashboardCard() {
     let targetSetting = await db.settings.toCollection().first();
-    let workingDays = targetSetting && targetSetting.workingDays ? targetSetting.workingDays : 25;
-    let monthlyTarget = 0;
-    let monthSales = [];
-    let todayIssuesList = [];
-    let todaySalesList = [];
     
     // Read from selector or default to current
     const dashMonthSelector = document.getElementById('dashboard-month-selector');
     let currentMonth = (dashMonthSelector && dashMonthSelector.value) ? dashMonthSelector.value : getCurrentMonthString();
+    
+    let workingDaysFallback = targetSetting && targetSetting.workingDays ? targetSetting.workingDays : 25;
+    let workingDays = await getHistoricalWorkingDays(currentMonth, workingDaysFallback);
+    
+    let monthlyTarget = 0;
+    let monthSales = [];
+    let todayIssuesList = [];
+    let todaySalesList = [];
     
     let todayStr = getTodayString();
 
@@ -770,7 +824,7 @@ async function updateDashboardCard() {
     let daysLeft = calculateDynamicDaysLeft(currentMonth, workingDays || 25);
 
     const remainingTarget = (monthlyTarget - totalSales) > 0 ? (monthlyTarget - totalSales) : 0;
-    const todayTarget = remainingTarget / daysLeft;
+    const todayTarget = daysLeft > 0 ? (remainingTarget / daysLeft) : 0;
     const mainBalanceTarget = (monthlyTarget - totalSales) > 0 ? (monthlyTarget - totalSales) : 0;
 
     // 4. Progress
@@ -803,12 +857,20 @@ async function updateDashboardCard() {
     // Calculate aggregate sums of all distributors for the Dashboard DMS Performance Summary Card
     try {
         const allStaff = await db.staff.toArray();
-        let sumMonthlyTarget = 0;
+        let sumMonthlyTarget = monthlyTarget; // Use the context-aware Global/Staff Monthly Target!
         let sumDmsTarget = 0;
-        allStaff.forEach(s => {
-            sumMonthlyTarget += Number(s.target || 0);
-            sumDmsTarget += Number(s.dmsTarget || 0);
-        });
+        
+        for (const s of allStaff) {
+            // Try to get historical DMS target for the selected month
+            sumDmsTarget += await getHistoricalDmsTarget(currentMonth, s.id);
+        }
+        
+        // If distributor, only use their own DMS target
+        if (currentUser && currentUser.role === 'distributor') {
+            const staff = await db.staff.get(currentUser.id);
+            sumDmsTarget = await getHistoricalDmsTarget(currentMonth, currentUser.id);
+        }
+
         const sumDmsBalance = (sumMonthlyTarget - sumDmsTarget) > 0 ? (sumMonthlyTarget - sumDmsTarget) : 0;
         const sumDmsDayTarget = daysLeft > 0 ? (sumDmsBalance / daysLeft) : sumDmsBalance;
         const sumDmsProgress = sumMonthlyTarget > 0 ? (sumDmsTarget / sumMonthlyTarget * 100) : 0;
@@ -910,7 +972,8 @@ async function renderDistributorStats() {
 
     // Move expensive settings fetch OUTSIDE the loop for speed
     const settings = await db.settings.toCollection().first();
-    const totalWokingDays = settings ? (settings.workingDays || 25) : 25;
+    const fallbackDays = settings ? (settings.workingDays || 25) : 25;
+    const totalWokingDays = await getHistoricalWorkingDays(currentMonth, fallbackDays);
 
     // Optimization: Bulk fetch all today's and this month's data in one go
     const [allTodayIssues, allTodaySales, allMonthSales] = await Promise.all([
@@ -935,12 +998,13 @@ async function renderDistributorStats() {
             totalC += Number(r.totalCommission || 0);
         });
 
-        const target = staff.target || 0;
+        const fallbackTarget = staff.target || 0;
+        const target = await getHistoricalTarget(currentMonth, 'staff', staff.id, fallbackTarget);
         const perc = target > 0 ? (totalS / target * 100) : 0;
 
         let daysLeft = calculateDynamicDaysLeft(currentMonth, totalWokingDays);
         const remainingTarget = (target - totalS) > 0 ? (target - totalS) : 0;
-        const dynamicDayTarget = remainingTarget / daysLeft;
+        const dynamicDayTarget = daysLeft > 0 ? (remainingTarget / daysLeft) : 0;
         const balanceTarget = (target - totalS) > 0 ? (target - totalS) : 0;
 
         const lastRec = staffMonthSales.sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -1686,16 +1750,42 @@ function setupEventListeners() {
 
 
     // --- Monthly Target History Helper ---
-    async function saveMonthlyTarget(type, entityId, amount, monthOverride = null) {
+    async function saveMonthlyTarget(type, entityId, amount, monthOverride = null, workingDays = null) {
         const targetMonth = monthOverride || getCurrentMonthString();
         const existing = await db.monthlyTargets.where('[month+type+entityId]').equals([targetMonth, type, entityId]).first();
+        
+        let updates = {};
+        if (typeof amount !== 'undefined' && amount !== null) {
+            updates.amount = amount;
+        }
+        if (typeof workingDays !== 'undefined' && workingDays !== null && type === 'global' && entityId === 1) {
+            updates.workingDays = workingDays;
+        }
+        
         if (existing) {
-            if (existing.amount !== amount) {
-                await db.monthlyTargets.update(existing.id, { amount, syncStatus: 'pending' });
+            let needsUpdate = false;
+            for (let key in updates) {
+                if (existing[key] !== updates[key]) {
+                    needsUpdate = true;
+                }
+            }
+            if (needsUpdate) {
+                await db.monthlyTargets.update(existing.id, { ...updates, syncStatus: 'pending' });
             }
         } else {
-            await db.monthlyTargets.add({ month: targetMonth, type, entityId, amount, syncStatus: 'pending' });
+            let newRecord = { month: targetMonth, type, entityId, syncStatus: 'pending' };
+            if (typeof amount !== 'undefined' && amount !== null) {
+                newRecord.amount = amount;
+            } else {
+                newRecord.amount = 0;
+            }
+            if (type === 'global' && entityId === 1) {
+                newRecord.workingDays = workingDays !== null ? workingDays : 25;
+            }
+            await db.monthlyTargets.add(newRecord);
         }
+        
+        pushPendingToCloud().catch(e => console.warn("Push targets failed:", e));
     }
 
     // Sets & Target
@@ -1822,11 +1912,11 @@ function setupEventListeners() {
 
         let first = await db.settings.toCollection().first();
         if (first) {
-            // Only update the global fallback target if selected month is current or future
+            // Only update the global fallback target and workingDays if selected month is current or future
             if (selectedMonth >= getCurrentMonthString()) {
                 await db.settings.update(first.id, { targetAmount, workingDays, adminPassword });
             } else {
-                await db.settings.update(first.id, { workingDays, adminPassword });
+                await db.settings.update(first.id, { adminPassword });
             }
         } else {
             await db.settings.add({ targetAmount, workingDays, adminPassword });
@@ -1834,7 +1924,7 @@ function setupEventListeners() {
         showToast('Settings Updated');
         updateDashboardCard();
 
-        await saveMonthlyTarget('global', 1, targetAmount, selectedMonth);
+        await saveMonthlyTarget('global', 1, targetAmount, selectedMonth, workingDays);
 
         // --- Online Sync Settings ---
         if (selectedMonth >= getCurrentMonthString()) {
@@ -1853,9 +1943,14 @@ function setupEventListeners() {
             const monthStr = e.target.value;
             if (!monthStr) return;
             let s = await db.settings.toCollection().first();
-            const fallback = s ? (s.targetAmount || 0) : 0;
-            const monthTarget = await getHistoricalTarget(monthStr, 'global', 1, fallback);
+            
+            const fallbackTarget = s ? (s.targetAmount || 0) : 0;
+            const monthTarget = await getHistoricalTarget(monthStr, 'global', 1, fallbackTarget);
             document.getElementById('setting-target').value = monthTarget;
+            
+            const fallbackDays = s ? (s.workingDays || 25) : 25;
+            const monthDays = await getHistoricalWorkingDays(monthStr, fallbackDays);
+            document.getElementById('setting-days').value = monthDays;
         });
     }
 
@@ -1929,10 +2024,13 @@ async function loadStaffDropdowns() {
     }
     
     if (s) {
-        document.getElementById('setting-days').value = s.workingDays || 25;
+        const selectedMonth = monthInput ? monthInput.value : getCurrentMonthString();
+        const fallbackDays = s.workingDays || 25;
+        const monthDays = await getHistoricalWorkingDays(selectedMonth, fallbackDays);
+        document.getElementById('setting-days').value = monthDays;
         document.getElementById('setting-admin-pass').value = s.adminPassword || 'admin123';
         
-        let monthTarget = await getHistoricalTarget(monthInput ? monthInput.value : getCurrentMonthString(), 'global', 1, s.targetAmount || 0);
+        let monthTarget = await getHistoricalTarget(selectedMonth, 'global', 1, s.targetAmount || 0);
         document.getElementById('setting-target').value = monthTarget;
     }
 }
@@ -1947,8 +2045,13 @@ async function renderStaffTable() {
         return;
     }
 
+    let monthInput = document.getElementById('setting-target-month');
+    const selectedMonth = monthInput ? (monthInput.value || getCurrentMonthString()) : getCurrentMonthString();
+
     tbody.innerHTML = '';
-    list.forEach((s, idx) => {
+    for (let idx = 0; idx < list.length; idx++) {
+        const s = list[idx];
+        const currentTarget = await getHistoricalTarget(selectedMonth, 'staff', s.id, s.target || 0);
         tbody.insertAdjacentHTML('beforeend', `
             <tr class="hover:bg-slate-800/50 transition-colors">
                 <td class="py-3 px-4 text-center font-medium w-8">${idx + 1}</td>
@@ -1959,7 +2062,7 @@ async function renderStaffTable() {
                 </td>
                 <td class="py-3 px-4 text-xs font-mono text-gray-400">${s.joinedDate || '-'}</td>
                 <td class="py-3 px-4 text-gray-400">${s.routeName}</td>
-                <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(s.target || 0)}</td>
+                <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(currentTarget)}</td>
                 <td class="py-3 px-4 text-right">
                     <button onclick="wipeStaffData('${s.id}')" class="text-amber-400 hover:text-amber-300 p-2 rounded-lg hover:bg-amber-400/10 transition-colors mr-1" title="Wipe All History Data">
                         <i class="fas fa-broom"></i>
@@ -1973,7 +2076,7 @@ async function renderStaffTable() {
                 </td>
             </tr>
         `);
-    });
+    }
 
 }
 
@@ -2190,8 +2293,13 @@ window.editStaff = async function (id) {
         document.getElementById('staff-route').value = s.routeName;
         document.getElementById('staff-phone').value = s.phone;
         document.getElementById('staff-password').value = s.password || '';
-        document.getElementById('staff-target').value = s.target || '';
-        if(document.getElementById('staff-dms-target')) document.getElementById('staff-dms-target').value = s.dmsTarget || '';
+        
+        const currentMonth = new Date().toISOString().substring(0, 7);
+        const currentTarget = await getHistoricalTarget(currentMonth, 'staff', s.id, s.target || 0);
+        const currentDms = await getHistoricalDmsTarget(currentMonth, s.id);
+        
+        document.getElementById('staff-target').value = currentTarget || '';
+        if(document.getElementById('staff-dms-target')) document.getElementById('staff-dms-target').value = currentDms || '';
 
         document.getElementById('staff-submit-btn').innerHTML = '<i class="fas fa-save mr-1"></i> Update';
         document.getElementById('staff-submit-btn').classList.replace('bg-indigo-600', 'bg-emerald-600');
@@ -2629,12 +2737,13 @@ async function renderSingleStaffHistory(monthStr, staffId, container) {
 
     // DMS calculations
     const settings = await db.settings.toCollection().first();
-    const workingDays = settings ? (settings.workingDays || 25) : 25;
+    const fallbackDays = settings ? (settings.workingDays || 25) : 25;
+    const workingDays = await getHistoricalWorkingDays(monthStr, fallbackDays);
     const daysLeft = calculateDynamicDaysLeft(monthStr, workingDays);
-    const dmsTarget = staff.dmsTarget || 0;
+    const dmsTarget = await getHistoricalDmsTarget(monthStr, staffId);
     const remainingDmsTarget = (monthlyTarget - dmsTarget) > 0 ? (monthlyTarget - dmsTarget) : 0;
     const dmsProgress = monthlyTarget > 0 ? (dmsTarget / monthlyTarget * 100) : 0;
-    const dailyDmsTarget = daysLeft > 0 ? (remainingDmsTarget / daysLeft) : remainingDmsTarget;
+    const dailyDmsTarget = daysLeft > 0 ? (remainingDmsTarget / daysLeft) : 0;
 
     // Fetch DMS history records for this staff and month
     let dmsHistoryRecords = await db.dmsHistory.where('staffId').equals(staffId).toArray();
@@ -2835,19 +2944,20 @@ async function updateStaffPerformanceDisplay(staffId) {
         }, 0);
 
         const settings = await db.settings.toCollection().first();
-        const workingDays = settings ? (settings.workingDays || 25) : 25;
+        const fallbackDays = settings ? (settings.workingDays || 25) : 25;
+        const workingDays = await getHistoricalWorkingDays(currentMonth, fallbackDays);
         const fallbackTarget = staff.target || 0;
         const monthlyTarget = await getHistoricalTarget(currentMonth, 'staff', staff.id, fallbackTarget);
-        const dmsTarget = staff.dmsTarget || 0;
+        const dmsTarget = await getHistoricalDmsTarget(currentMonth, staff.id);
 
         // Dynamic day target calculation
         let daysLeft = calculateDynamicDaysLeft(currentMonth, workingDays);
 
         const remainingTarget = (monthlyTarget - monthAchieved) > 0 ? (monthlyTarget - monthAchieved) : 0;
-        const dailyTarget = remainingTarget / daysLeft;
+        const dailyTarget = daysLeft > 0 ? (remainingTarget / daysLeft) : 0;
 
         const remainingDmsTarget = (monthlyTarget - dmsTarget) > 0 ? (monthlyTarget - dmsTarget) : 0;
-        const dailyDmsTarget = remainingDmsTarget / daysLeft;
+        const dailyDmsTarget = daysLeft > 0 ? (remainingDmsTarget / daysLeft) : 0;
 
         const progress = monthlyTarget > 0 ? (monthAchieved / monthlyTarget * 100) : 0;
         const dmsProgress = monthlyTarget > 0 ? (dmsTarget / monthlyTarget * 100) : 0;
@@ -3141,10 +3251,16 @@ async function pullFromCloud() {
             }
 
             if (monthlyTargetsRes && monthlyTargetsRes.data) {
-                const mapped = monthlyTargetsRes.data.map(r => ({
-                    id: r.id, month: r.month, type: r.type, entityId: r.entity_id,
-                    amount: Number(r.amount), syncStatus: 'synced'
-                }));
+                const mapped = monthlyTargetsRes.data.map(r => {
+                    let obj = {
+                        id: r.id, month: r.month, type: r.type, entityId: r.entity_id,
+                        amount: Number(r.amount), syncStatus: 'synced'
+                    };
+                    if (r.working_days !== undefined && r.working_days !== null) {
+                        obj.workingDays = Number(r.working_days);
+                    }
+                    return obj;
+                });
                 
                 await removeDeleted('monthlyTargets', mapped.map(r => r.id));
                 
