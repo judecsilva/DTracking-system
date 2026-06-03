@@ -1686,15 +1686,15 @@ function setupEventListeners() {
 
 
     // --- Monthly Target History Helper ---
-    async function saveMonthlyTarget(type, entityId, amount) {
-        const currentMonth = getCurrentMonthString();
-        const existing = await db.monthlyTargets.where('[month+type+entityId]').equals([currentMonth, type, entityId]).first();
+    async function saveMonthlyTarget(type, entityId, amount, monthOverride = null) {
+        const targetMonth = monthOverride || getCurrentMonthString();
+        const existing = await db.monthlyTargets.where('[month+type+entityId]').equals([targetMonth, type, entityId]).first();
         if (existing) {
             if (existing.amount !== amount) {
                 await db.monthlyTargets.update(existing.id, { amount, syncStatus: 'pending' });
             }
         } else {
-            await db.monthlyTargets.add({ month: currentMonth, type, entityId, amount, syncStatus: 'pending' });
+            await db.monthlyTargets.add({ month: targetMonth, type, entityId, amount, syncStatus: 'pending' });
         }
     }
 
@@ -1816,26 +1816,48 @@ function setupEventListeners() {
         const targetAmount = Number(document.getElementById('setting-target').value);
         const workingDays = Number(document.getElementById('setting-days').value) || 25;
         const adminPassword = document.getElementById('setting-admin-pass').value || 'admin123';
+        
+        let monthInput = document.getElementById('setting-target-month');
+        const selectedMonth = monthInput ? (monthInput.value || getCurrentMonthString()) : getCurrentMonthString();
 
         let first = await db.settings.toCollection().first();
         if (first) {
-            await db.settings.update(first.id, { targetAmount, workingDays, adminPassword });
+            // Only update the global fallback target if selected month is current or future
+            if (selectedMonth >= getCurrentMonthString()) {
+                await db.settings.update(first.id, { targetAmount, workingDays, adminPassword });
+            } else {
+                await db.settings.update(first.id, { workingDays, adminPassword });
+            }
         } else {
             await db.settings.add({ targetAmount, workingDays, adminPassword });
         }
         showToast('Settings Updated');
         updateDashboardCard();
 
-        await saveMonthlyTarget('global', 1, targetAmount);
+        await saveMonthlyTarget('global', 1, targetAmount, selectedMonth);
 
         // --- Online Sync Settings ---
-        syncToCloud('settings', {
-            id: 1,
-            target_amount: targetAmount,
-            working_days: workingDays,
-            admin_password: adminPassword
-        }, { id: 1 });
+        if (selectedMonth >= getCurrentMonthString()) {
+            syncToCloud('settings', {
+                id: 1,
+                target_amount: targetAmount,
+                working_days: workingDays,
+                admin_password: adminPassword
+            }, { id: 1 });
+        }
     });
+
+    const settingMonthInput = document.getElementById('setting-target-month');
+    if (settingMonthInput) {
+        settingMonthInput.addEventListener('change', async (e) => {
+            const monthStr = e.target.value;
+            if (!monthStr) return;
+            let s = await db.settings.toCollection().first();
+            const fallback = s ? (s.targetAmount || 0) : 0;
+            const monthTarget = await getHistoricalTarget(monthStr, 'global', 1, fallback);
+            document.getElementById('setting-target').value = monthTarget;
+        });
+    }
 
     // Issue Modifiers
     document.querySelectorAll('.issue-calc').forEach(el => {
@@ -1901,10 +1923,17 @@ async function loadStaffDropdowns() {
 
     // Also populate settings target if present
     let s = await db.settings.toCollection().first();
+    let monthInput = document.getElementById('setting-target-month');
+    if (monthInput && !monthInput.value) {
+        monthInput.value = getCurrentMonthString();
+    }
+    
     if (s) {
-        document.getElementById('setting-target').value = s.targetAmount || '';
         document.getElementById('setting-days').value = s.workingDays || 25;
         document.getElementById('setting-admin-pass').value = s.adminPassword || 'admin123';
+        
+        let monthTarget = await getHistoricalTarget(monthInput ? monthInput.value : getCurrentMonthString(), 'global', 1, s.targetAmount || 0);
+        document.getElementById('setting-target').value = monthTarget;
     }
 }
 
