@@ -522,8 +522,8 @@ async function getHistoricalTarget(monthStr, type, entityId, fallbackTarget) {
         return record.amount;
     }
     const currentMonthStr = getCurrentMonthString();
-    if (type === 'staff' && monthStr >= currentMonthStr) {
-        return 0; // Reset to 0 for a new/current month if no specific record is found
+    if (monthStr >= currentMonthStr) {
+        return 0; // Reset to 0 for a new/current month if no specific record is found (both global and staff)
     }
     return fallbackTarget;
 }
