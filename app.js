@@ -945,7 +945,7 @@ async function updateDashboardCard() {
     }
 
     // --- Chart Logic ---
-    updatePerformanceChart(monthSales, monthlyTarget, workingDays);
+    updatePerformanceChart(monthSales, monthlyTarget, workingDays, currentMonth);
     updateProductChart(monthSales);
     checkBackupReminder();
 }
@@ -1049,13 +1049,19 @@ async function renderDistributorStats() {
     tbody.innerHTML = html;
 }
 
-async function updatePerformanceChart(monthSales, monthlyTarget, workingDays) {
+async function updatePerformanceChart(monthSales, monthlyTarget, workingDays, monthStr = null) {
     const ctx = document.getElementById('performanceChart');
     if (!ctx) return;
 
-    // Days in current month
-    const now = new Date();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    // Days in current/selected month
+    let daysInMonth = 30;
+    if (monthStr) {
+        const [year, month] = monthStr.split('-').map(Number);
+        daysInMonth = new Date(year, month, 0).getDate();
+    } else {
+        const now = new Date();
+        daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    }
     const labels = Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
 
     // Group sales by day
@@ -1801,6 +1807,9 @@ function setupEventListeners() {
         const dmsTarget = Number(document.getElementById('staff-dms-target').value) || 0;
         const joinedDate = document.getElementById('staff-joined').value;
 
+        const monthInput = document.getElementById('setting-target-month');
+        const selectedMonth = monthInput ? (monthInput.value || getCurrentMonthString()) : getCurrentMonthString();
+
         if (id !== '') {
             // Check if phone number is taken by ANOTHER staff member
             let conflict = await db.staff
@@ -1816,17 +1825,18 @@ function setupEventListeners() {
             const existingStaff = await db.staff.get(id);
             const targetUuid = existingStaff ? (existingStaff.uuid || id) : id;
 
-            const oldDmsTarget = existingStaff ? (existingStaff.dmsTarget || 0) : 0;
+            const oldDmsTarget = await getHistoricalDmsTarget(selectedMonth, id);
             const newDmsTarget = Number(dmsTarget) || 0;
 
             await db.staff.update(id, { name, routeName, phone, password, target, dmsTarget, joinedDate, syncStatus: 'pending' });
 
             if (newDmsTarget !== oldDmsTarget) {
-                const today = getTodayString();
-                const existingDms = await db.dmsHistory.where('[date+staffId]').equals([today, id]).first();
+                const currentMonthStr = getCurrentMonthString();
+                const targetDate = (selectedMonth === currentMonthStr) ? getTodayString() : `${selectedMonth}-01`;
+                const existingDms = await db.dmsHistory.where('[date+staffId]').equals([targetDate, id]).first();
                 const dmsLog = {
                     staffId: id,
-                    date: today,
+                    date: targetDate,
                     amount: newDmsTarget,
                     syncStatus: 'pending'
                 };
@@ -1841,7 +1851,7 @@ function setupEventListeners() {
             showToast('Staff Updated');
             cancelStaffEdit();
 
-            await saveMonthlyTarget('staff', id, target);
+            await saveMonthlyTarget('staff', id, target, selectedMonth);
 
             // Sync specific updated staff
             const s = await db.staff.get(id);
@@ -1872,16 +1882,17 @@ function setupEventListeners() {
 
             const newDmsTarget = Number(dmsTarget) || 0;
             if (newDmsTarget > 0) {
-                const today = getTodayString();
+                const currentMonthStr = getCurrentMonthString();
+                const targetDate = (selectedMonth === currentMonthStr) ? getTodayString() : `${selectedMonth}-01`;
                 await db.dmsHistory.add({
                     staffId: newId,
-                    date: today,
+                    date: targetDate,
                     amount: newDmsTarget,
                     syncStatus: 'pending'
                 });
             }
 
-            await saveMonthlyTarget('staff', newId, target);
+            await saveMonthlyTarget('staff', newId, target, selectedMonth);
 
             document.getElementById('staff-form').reset();
             showToast('Staff Added');
@@ -1951,6 +1962,9 @@ function setupEventListeners() {
             const fallbackDays = s ? (s.workingDays || 25) : 25;
             const monthDays = await getHistoricalWorkingDays(monthStr, fallbackDays);
             document.getElementById('setting-days').value = monthDays;
+
+            // Proactively refresh staff table targets for the selected month
+            renderStaffTable();
         });
     }
 
@@ -2352,9 +2366,11 @@ window.editStaff = async function (id) {
         document.getElementById('staff-phone').value = s.phone;
         document.getElementById('staff-password').value = s.password || '';
         
-        const currentMonth = new Date().toISOString().substring(0, 7);
-        const currentTarget = await getHistoricalTarget(currentMonth, 'staff', s.id, s.target || 0);
-        const currentDms = await getHistoricalDmsTarget(currentMonth, s.id);
+        const monthInput = document.getElementById('setting-target-month');
+        const selectedMonth = monthInput ? (monthInput.value || getCurrentMonthString()) : getCurrentMonthString();
+        
+        const currentTarget = await getHistoricalTarget(selectedMonth, 'staff', s.id, s.target || 0);
+        const currentDms = await getHistoricalDmsTarget(selectedMonth, s.id);
         
         document.getElementById('staff-target').value = currentTarget || '';
         if(document.getElementById('staff-dms-target')) document.getElementById('staff-dms-target').value = currentDms || '';
