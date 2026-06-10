@@ -2064,7 +2064,7 @@ async function renderStaffTable() {
                 <td class="py-3 px-4 text-gray-400">${s.routeName}</td>
                 <td class="py-3 px-4 text-emerald-400 font-medium">${formatCurrency(currentTarget)}</td>
                 <td class="py-3 px-4 text-right">
-                    <button onclick="wipeStaffData('${s.id}')" class="text-amber-400 hover:text-amber-300 p-2 rounded-lg hover:bg-amber-400/10 transition-colors mr-1" title="Wipe All History Data">
+                    <button onclick="wipeStaffData('${s.id}')" class="text-amber-400 hover:text-amber-300 p-2 rounded-lg hover:bg-amber-400/10 transition-colors mr-1" title="Wipe History for Selected Month">
                         <i class="fas fa-broom"></i>
                     </button>
                     <button onclick="editStaff('${s.id}')" class="text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-blue-400/10 transition-colors mr-1">
@@ -2232,9 +2232,16 @@ window.wipeStaffData = async function(strId) {
     const staff = await db.staff.get(id);
     if (!staff) return;
 
+    const monthInput = document.getElementById('setting-target-month');
+    const selectedMonth = monthInput ? (monthInput.value || getCurrentMonthString()) : getCurrentMonthString();
+    const [year, month] = selectedMonth.split('-');
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const monthName = monthNames[Number(month) - 1] || month;
+    const formattedMonth = `${monthName} ${year}`;
+
     let res = await Swal.fire({
-        title: `Wipe all data for ${staff.name}?`,
-        text: 'This will permanently delete ALL sales and issue history for this distributor. The distributor profile itself will remain.',
+        title: `Wipe data for ${staff.name} in ${formattedMonth}?`,
+        text: `This will permanently delete ALL sales, issues, and DMS history for this distributor during ${formattedMonth}. The distributor profile and other months' data will remain.`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#f59e0b',
@@ -2248,18 +2255,69 @@ window.wipeStaffData = async function(strId) {
         try {
             // 1. Sync Delete to Cloud
             if (typeof supabaseClient !== 'undefined') {
-                await supabaseClient.from('daily_issues').delete().eq('staff_id', id);
-                await supabaseClient.from('daily_sales').delete().eq('staff_id', id);
+                const nextMonth = Number(month) === 12 ? 1 : Number(month) + 1;
+                const nextYear = Number(month) === 12 ? Number(year) + 1 : Number(year);
+                const startMonthStr = `${selectedMonth}-01`;
+                const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+                await supabaseClient.from('daily_issues')
+                    .delete()
+                    .eq('staff_id', id)
+                    .gte('date', startMonthStr)
+                    .lt('date', nextMonthStr);
+
+                await supabaseClient.from('daily_sales')
+                    .delete()
+                    .eq('staff_id', id)
+                    .gte('date', startMonthStr)
+                    .lt('date', nextMonthStr);
+
+                await supabaseClient.from('dms_history')
+                    .delete()
+                    .eq('staff_id', id)
+                    .gte('date', startMonthStr)
+                    .lt('date', nextMonthStr);
             }
 
             // 2. Delete locally
-            await db.dailyIssues.where('staffId').equals(id).delete();
-            await db.dailySales.where('staffId').equals(id).delete();
-            // Fallback for mixed ID types
-            await db.dailyIssues.where('staffId').equals(String(id)).delete();
-            await db.dailySales.where('staffId').equals(String(id)).delete();
+            const issuesToDelete = await db.dailyIssues
+                .where('staffId').equals(id)
+                .filter(r => r.date && r.date.startsWith(selectedMonth))
+                .toArray();
+            await db.dailyIssues.bulkDelete(issuesToDelete.map(r => r.id));
 
-            showToast(`History wiped for ${staff.name}`);
+            const salesToDelete = await db.dailySales
+                .where('staffId').equals(id)
+                .filter(r => r.date && r.date.startsWith(selectedMonth))
+                .toArray();
+            await db.dailySales.bulkDelete(salesToDelete.map(r => r.id));
+
+            const dmsToDelete = await db.dmsHistory
+                .where('staffId').equals(id)
+                .filter(r => r.date && r.date.startsWith(selectedMonth))
+                .toArray();
+            await db.dmsHistory.bulkDelete(dmsToDelete.map(r => r.id));
+
+            // Fallback for mixed ID types
+            const issuesToDeleteStr = await db.dailyIssues
+                .where('staffId').equals(String(id))
+                .filter(r => r.date && r.date.startsWith(selectedMonth))
+                .toArray();
+            await db.dailyIssues.bulkDelete(issuesToDeleteStr.map(r => r.id));
+
+            const salesToDeleteStr = await db.dailySales
+                .where('staffId').equals(String(id))
+                .filter(r => r.date && r.date.startsWith(selectedMonth))
+                .toArray();
+            await db.dailySales.bulkDelete(salesToDeleteStr.map(r => r.id));
+
+            const dmsToDeleteStr = await db.dmsHistory
+                .where('staffId').equals(String(id))
+                .filter(r => r.date && r.date.startsWith(selectedMonth))
+                .toArray();
+            await db.dmsHistory.bulkDelete(dmsToDeleteStr.map(r => r.id));
+
+            showToast(`History wiped for ${staff.name} in ${formattedMonth}`);
             updateDashboardCard();
             if (typeof renderDistributorStats === 'function') renderDistributorStats();
         } catch (error) {
